@@ -1,0 +1,23 @@
+{
+  "name": "api",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.0",
+    "@supabase/supabase-js": "^2.106.1",
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.0",
+    "fastify": "^5.0.0",
+    "playwright": "^1.60.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@leadflow/types": "*",
+    "fastify": "^4.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

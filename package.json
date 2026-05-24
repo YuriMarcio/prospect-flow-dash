@@ -1,0 +1,16 @@
+{
+  "name": "leadflow",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w web",
+    "dev:api": "npm run dev -w api",
+    "dev:worker": "npm run dev -w worker"
+  },
+  "devDependencies": {
+    "turbo": "^2.9.14"
+  }
+}
