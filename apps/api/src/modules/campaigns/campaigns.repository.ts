@@ -1,17 +1,32 @@
-import { supabase } from "../../lib/supabase"; // Ajuste se seu client estiver em outro lugar
+import { getSupabase } from "../../lib/supabase";
+export async function create(data: Record<string, unknown>) {
+  // Gera uma string com a data e hora atual no formato brasileiro
+  const timestamp = new Date().toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
-export async function create(data: any) {
-  const { data: campaign, error } = await supabase
-    .from("campaigns")
-    .insert([{ ...data, status: "pending" }])
-    .select()
-    .single();
+  // Constrói o nome dinâmico: Ex: "Hamburgueria - São Luís - 24/05/2026 21:55"
+  const dynamicName = `${data.category} - ${data.city} - ${timestamp}`;
 
-  if (error) throw new Error(error.message);
-  return campaign;
+  const payload = {
+    name: dynamicName, // Nome gerado automaticamente
+    category: data.category,
+    city: data.city,
+    quantity: data.quantity,
+    status: "pending",
+    processed: 0,
+    found: 0,
+  };
+
+  return await insertWithAvailableColumns(payload);
 }
 
 export async function findAll() {
+  const supabase = getSupabase();
   const { data: campaigns, error } = await supabase
     .from("campaigns")
     .select("*")
@@ -22,6 +37,7 @@ export async function findAll() {
 }
 
 export async function findById(id: string) {
+  const supabase = getSupabase();
   const { data: campaign, error } = await supabase
     .from("campaigns")
     .select("*")
@@ -33,6 +49,7 @@ export async function findById(id: string) {
 }
 
 export async function updateStatus(id: string, status: string) {
+  const supabase = getSupabase();
   const { data: campaign, error } = await supabase
     .from("campaigns")
     .update({ status })
@@ -42,4 +59,33 @@ export async function updateStatus(id: string, status: string) {
 
   if (error) throw new Error(error.message);
   return campaign;
+}
+
+async function insertWithAvailableColumns(payload: Record<string, unknown>) {
+  const supabase = getSupabase();
+  const remainingPayload = { ...payload };
+  const removedColumns = new Set<string>();
+
+  while (true) {
+    const { data: campaign, error } = await supabase
+      .from("campaigns")
+      .insert([remainingPayload])
+      .select()
+      .single();
+
+    if (!error) return campaign;
+
+    const missingColumn = getMissingColumn(error.message);
+    if (!missingColumn || removedColumns.has(missingColumn)) {
+      throw new Error(error.message);
+    }
+
+    delete remainingPayload[missingColumn];
+    removedColumns.add(missingColumn);
+  }
+}
+
+function getMissingColumn(message: string) {
+  const match = message.match(/Could not find the '([^']+)' column/);
+  return match?.[1];
 }

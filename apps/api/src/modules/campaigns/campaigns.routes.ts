@@ -4,7 +4,8 @@ import {
   createCampaignController,
   listCampaignsController,
   getCampaignController,
-  startCampaignController
+  startCampaignController,
+  campaignleadsearchController
 } from "./campaigns.controller";
 
 export async function campaignsRoutes(
@@ -23,6 +24,11 @@ export async function campaignsRoutes(
   app.post(
     "/",
     createCampaignController
+  );
+
+  app.post(
+    "/campaignleadsearch",
+    campaignleadsearchController
   );
 
   app.post(

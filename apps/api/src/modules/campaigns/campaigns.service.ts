@@ -1,8 +1,10 @@
+import { runIfoodScraping } from "src/workers/ifood/ifood.worker";
 import * as campaignsRepository from "./campaigns.repository";
+import { create } from "./campaigns.repository";
 // No futuro, importaremos o worker aqui:
 // import { startIfoodWorker } from "../../workers/ifood/ifood.worker";
 
-export async function createCampaignService(data: any) {
+export async function createCampaignService(data: Record<string, unknown>) {
   // 1. Salva a campanha
   const campaign = await campaignsRepository.create(data);
   return campaign;
@@ -14,14 +16,33 @@ export async function listCampaignsService() {
   return campaigns;
 }
 
+export async function campaignleadsearchService(data: Record<string, unknown>) {
+  // 1. Create the campaign
+  const campaign = await campaignsRepository.create(data);
+
+  if (!campaign) {
+    throw new Error("Falha ao criar campanha no banco de dados");
+  }
+
+  runIfoodScraping(
+    campaign.id,
+    data.address as string,
+    data.category as string,
+    data.quantity as number
+  );
+
+  return campaign;
+}
+
+
 export async function getCampaignService(id: string) {
   // 1. Busca uma campanha específica
   const campaign = await campaignsRepository.findById(id);
-  
+
   if (!campaign) {
     throw new Error("Campanha não encontrada");
   }
-  
+
   return campaign;
 }
 

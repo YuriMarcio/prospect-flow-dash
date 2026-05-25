@@ -1,6 +1,6 @@
 import { chromium, Page } from "playwright";
 import { parseInstagramBio, ParsedBioData } from "./instagram.parser";
-// import * as leadsRepository from "../../modules/leads/leads.repository";
+import * as leadsRepository from "../../modules/leads/leads.repository";
 // import * as logsRepository from "../../modules/logs/logs.repository";
 
 export interface DiscoveryLead {
@@ -16,7 +16,7 @@ export async function runInstagramDiscovery(
   campaignId: string,
   keyword: string, // Ex: "hamburgueria", "lanches", "delivery"
   city: string,
-  quantity: number
+  quantity: number,
 ) {
   /*
     =========================================================
@@ -26,9 +26,8 @@ export async function runInstagramDiscovery(
     que operam apenas via Instagram/WhatsApp e NÃO estão no iFood.
   */
 
-    
-
   const browser = await chromium.launch({ headless: false }); // Mudar para true em prod
+  // newContext() cria uma sessão isolada, equivalente a uma aba anônima/incógnita.
   const context = await browser.newContext();
   const page = await context.newPage();
 
@@ -37,7 +36,7 @@ export async function runInstagramDiscovery(
 
   try {
     console.log(`[DISCOVERY] Iniciando busca por "${keyword}" em ${city}...`);
-    
+
     // A string mágica do Google Dorking
     const query = `site:instagram.com "${keyword}" "${city}"`;
 
@@ -51,7 +50,9 @@ export async function runInstagramDiscovery(
       const results = await page.locator("#search .g").all();
 
       if (results.length === 0) {
-        console.log("[DISCOVERY] Não há mais resultados no Google. Fim da linha.");
+        console.log(
+          "[DISCOVERY] Não há mais resultados no Google. Fim da linha.",
+        );
         break;
       }
 
@@ -61,16 +62,29 @@ export async function runInstagramDiscovery(
         try {
           const linkElement = result.locator("a").first();
           const url = await linkElement.getAttribute("href");
-          
-          // O Google mostra o título assim: "Nome do Restaurante (@nomedoperfil) • Fotos..."
-          const titleRaw = await result.locator("h3").innerText().catch(() => "");
-          const name = titleRaw.split("(")[0].trim().replace(" - Instagram", "");
 
-          const snippetText = await result.locator(".VwiC3b").innerText().catch(() => "");
+          // O Google mostra o título assim: "Nome do Restaurante (@nomedoperfil) • Fotos..."
+          const titleRaw = await result
+            .locator("h3")
+            .innerText()
+            .catch(() => "");
+          const name = titleRaw
+            .split("(")[0]
+            .trim()
+            .replace(" - Instagram", "");
+
+          const snippetText = await result
+            .locator(".VwiC3b")
+            .innerText()
+            .catch(() => "");
 
           // Só nos interessa se for um link de perfil de verdade, não de postagem /p/ ou /reel/
-          if (url && url.includes("instagram.com") && !url.includes("/p/") && !url.includes("/reel/")) {
-            
+          if (
+            url &&
+            url.includes("instagram.com") &&
+            !url.includes("/p/") &&
+            !url.includes("/reel/")
+          ) {
             // Usamos o nosso parser maravilhoso que criamos antes!
             const parsedBio = parseInstagramBio(snippetText);
 
@@ -80,14 +94,21 @@ export async function runInstagramDiscovery(
               description: snippetText,
               whatsapp: parsedBio.whatsapp,
               linktree: parsedBio.linktree,
-              digital_menu: parsedBio.digitalMenu
+              digital_menu: parsedBio.digitalMenu,
             };
 
             leadsFound.push(lead);
-            console.log(`[DISCOVERY] Novo lead capturado: ${lead.name} | WA: ${lead.whatsapp || 'N/A'}`);
-            
-            // FUTURO: Aqui chamaremos o repository para salvar o lead no banco
-            // await leadsRepository.create({ campaign_id: campaignId, ...lead });
+            console.log(
+              `[DISCOVERY] Novo lead capturado: ${lead.name} | WA: ${lead.whatsapp || "N/A"}`,
+            );
+
+            const result = await leadsRepository.createUnique({
+              campaign_id: campaignId,
+              ...lead,
+            });
+            if (!result.created) {
+              console.log(`[DISCOVERY] Lead repetido ignorado: ${lead.name}`);
+            }
           }
         } catch (err) {
           // Ignora erro em um bloco específico e continua
@@ -96,11 +117,12 @@ export async function runInstagramDiscovery(
 
       currentPage++;
     }
-
   } catch (error) {
     console.error(`[DISCOVERY] Falha crítica no worker de descoberta:`, error);
   } finally {
     await browser.close();
-    console.log(`[DISCOVERY] Processo finalizado. Total capturado: ${leadsFound.length}`);
+    console.log(
+      `[DISCOVERY] Processo finalizado. Total capturado: ${leadsFound.length}`,
+    );
   }
 }
