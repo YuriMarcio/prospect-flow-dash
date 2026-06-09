@@ -5,6 +5,7 @@ import {
   listCampaignsService,
   getCampaignService,
   startCampaignService,
+  campaignInstagramSearchService,
 } from "./campaigns.service";
 
 export async function createCampaignController(
@@ -28,6 +29,20 @@ export async function campaignleadsearchController(
   console.log("Received campaign lead search request with body:", request.body);
   const result = await campaignleadsearchService(request.body);
   return reply.status(201).send(result);
+}
+
+export async function campaignleadsearchinstaController(
+  request: FastifyRequest<{ Body: Record<string, unknown> }>,
+  reply: FastifyReply,
+) {
+  console.log("Busca recebida. Disparando bot INSTAGRAM em segundo plano...");
+
+  // ⚠️ AQUI ESTAVA O ERRO: Tem que chamar o serviço do Insta, não o do iFood
+  campaignInstagramSearchService(request.body).catch(err => {
+     console.error("Erro na campanha em background:", err);
+  });
+
+  return reply.status(202).send({ message: "Campanha Insta iniciada com sucesso." });
 }
 
 export async function listCampaignsController(

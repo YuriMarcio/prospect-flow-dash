@@ -1,128 +1,200 @@
-import { chromium, Page } from "playwright";
-import { parseInstagramBio, ParsedBioData } from "./instagram.parser";
+import axios from "axios";
+import { parseInstagramBio } from "./instagram.parser";
+import { runInstagramEnrichment } from "./instagram.enrichment.worker";
 import * as leadsRepository from "../../modules/leads/leads.repository";
-// import * as logsRepository from "../../modules/logs/logs.repository";
+
+// ---------------------------------------------------------------------------
+// TIPOS
+// ---------------------------------------------------------------------------
 
 export interface DiscoveryLead {
   name: string;
-  instagram_url: string;
-  description: string;
+  instagram: string;
+  notes: string;
   whatsapp: string | null;
   linktree: string | null;
-  digital_menu: string | null;
+  delivery_link: string | null;
 }
 
+interface SerpResult {
+  title: string;
+  link: string;
+  snippet: string;
+}
+
+interface SerpResponse {
+  organic_results?: SerpResult[];
+  error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// HELPERS
+// ---------------------------------------------------------------------------
+
+const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+/**
+ * Chama a SerpAPI com uma query de Google Dorking.
+ * Cada chamada consome 1 crédito. Free tier: 100/mês.
+ * Plano pago: ~$50/mês para 5.000 req → R$0,05/lead capturado.
+ */
+async function searchGoogle(query: string, start = 0): Promise<SerpResult[]> {
+  const SERP_API_KEY = process.env.SERP_API_KEY;
+
+  if (!SERP_API_KEY) {
+    throw new Error("[DISCOVERY] SERP_API_KEY não configurada no .env");
+  }
+
+  const params = {
+    api_key: SERP_API_KEY,
+    engine: "google",
+    q: query,
+    start,          // paginação: 0 = pág 1, 10 = pág 2, 20 = pág 3 ...
+    num: 10,
+    hl: "pt",
+    gl: "br",
+  };
+
+  const response = await axios.get<SerpResponse>(
+    "https://serpapi.com/search",
+    { params },
+  );
+
+  if (response.data.error) {
+    throw new Error(`[DISCOVERY] SerpAPI erro: ${response.data.error}`);
+  }
+
+  return response.data.organic_results ?? [];
+}
+
+/**
+ * Extrai o nome limpo do título que o Google mostra para perfis do Instagram.
+ * Formato típico: "Burger Kings SLZ (@burgerkingsslz) • Fotos e vídeos do Instagram"
+ */
+function extractNameFromTitle(title: string): string {
+  return title
+    .split("(")[0]           // remove (@handle)
+    .replace("- Instagram", "")
+    .replace("| Instagram", "")
+    .trim();
+}
+
+/**
+ * Valida se o link é de um perfil real (não post, reel ou stories).
+ */
+function isProfileUrl(url: string): boolean {
+  if (!url.includes("instagram.com")) return false;
+  if (url.includes("/p/")) return false;
+  if (url.includes("/reel/")) return false;
+  if (url.includes("/stories/")) return false;
+  if (url.includes("/explore/")) return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// WORKER PRINCIPAL
+// ---------------------------------------------------------------------------
+
+/**
+ * Descobre leads via Google Dorking + SerpAPI.
+ *
+ * Estratégia de queries (em ordem de precisão):
+ *   1. site:instagram.com "hamburgueria" "São Luís"          → perfis diretos
+ *   2. site:instagram.com "hamburgueria delivery" "São Luís" → com "delivery" na bio
+ *   3. site:instagram.com "lanches" "São Luís" "whatsapp"    → com WA explícito na bio
+ *
+ * O Google retorna ~100 resultados únicos por query antes de repetir.
+ * Com 3 queries por categoria, você chega facilmente a 200–300 leads por cidade.
+ */
 export async function runInstagramDiscovery(
   campaignId: string,
-  keyword: string, // Ex: "hamburgueria", "lanches", "delivery"
-  city: string,
+  keyword: string,   // Ex: "hamburgueria", "hot dog", "japonês"
+  city: string,      // Ex: "São Luís", "São Paulo"
   quantity: number,
-) {
-  /*
-    =========================================================
-    🚀 FUTURA IMPLEMENTAÇÃO: Descoberta Ampla pelo Instagram
-    =========================================================
-    Este worker servirá para encontrar deliverys e negócios locais
-    que operam apenas via Instagram/WhatsApp e NÃO estão no iFood.
-  */
+): Promise<void> {
+  console.log(`[DISCOVERY] Iniciando busca: "${keyword}" em "${city}" | meta: ${quantity} leads`);
 
-  const browser = await chromium.launch({ headless: false }); // Mudar para true em prod
-  // newContext() cria uma sessão isolada, equivalente a uma aba anônima/incógnita.
-  const context = await browser.newContext();
-  const page = await context.newPage();
+  // Monta variações da query para maximizar cobertura
+  const queries = [
+    `site:instagram.com "${keyword}" "${city}"`,
+    `site:instagram.com "${keyword} delivery" "${city}"`,
+    `site:instagram.com "${keyword}" "${city}" "whatsapp"`,
+  ];
 
   const leadsFound: DiscoveryLead[] = [];
-  let currentPage = 0;
+  const seenUrls = new Set<string>();
 
-  try {
-    console.log(`[DISCOVERY] Iniciando busca por "${keyword}" em ${city}...`);
+  for (const query of queries) {
+    if (leadsFound.length >= quantity) break;
 
-    // A string mágica do Google Dorking
-    const query = `site:instagram.com "${keyword}" "${city}"`;
+    let page = 0;
+    let emptyPages = 0;
 
-    while (leadsFound.length < quantity) {
-      // Navegando usando o parâmetro &start= para paginar os resultados do Google (0, 10, 20...)
-      const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&start=${currentPage * 10}`;
-      await page.goto(googleUrl, { waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(2000); // Pausa para parecer humano
+    console.log(`[DISCOVERY] Query: ${query}`);
 
-      // Pega todos os blocos de resultado de busca desta página
-      const results = await page.locator("#search .g").all();
+    while (leadsFound.length < quantity && emptyPages < 2) {
+      const results = await searchGoogle(query, page * 10);
 
       if (results.length === 0) {
-        console.log(
-          "[DISCOVERY] Não há mais resultados no Google. Fim da linha.",
-        );
+        emptyPages++;
+        console.log(`[DISCOVERY] Página ${page + 1} vazia. (${emptyPages}/2 antes de parar)`);
         break;
       }
 
       for (const result of results) {
         if (leadsFound.length >= quantity) break;
 
-        try {
-          const linkElement = result.locator("a").first();
-          const url = await linkElement.getAttribute("href");
+        const url = result.link;
 
-          // O Google mostra o título assim: "Nome do Restaurante (@nomedoperfil) • Fotos..."
-          const titleRaw = await result
-            .locator("h3")
-            .innerText()
-            .catch(() => "");
-          const name = titleRaw
-            .split("(")[0]
-            .trim()
-            .replace(" - Instagram", "");
+        // Ignora se não for perfil ou já foi visto
+        if (!isProfileUrl(url) || seenUrls.has(url)) continue;
+        seenUrls.add(url);
 
-          const snippetText = await result
-            .locator(".VwiC3b")
-            .innerText()
-            .catch(() => "");
+        const name = extractNameFromTitle(result.title);
+        const snippet = result.snippet ?? "";
 
-          // Só nos interessa se for um link de perfil de verdade, não de postagem /p/ ou /reel/
-          if (
-            url &&
-            url.includes("instagram.com") &&
-            !url.includes("/p/") &&
-            !url.includes("/reel/")
-          ) {
-            // Usamos o nosso parser maravilhoso que criamos antes!
-            const parsedBio = parseInstagramBio(snippetText);
+        const parsedBio = parseInstagramBio(snippet);
 
-            const lead: DiscoveryLead = {
-              name: name || "Desconhecido",
-              instagram_url: url,
-              description: snippetText,
-              whatsapp: parsedBio.whatsapp,
-              linktree: parsedBio.linktree,
-              digital_menu: parsedBio.digitalMenu,
-            };
+        const lead: DiscoveryLead = {
+          name: name || "Desconhecido",
+          instagram: url,
+          notes: snippet,
+          whatsapp: parsedBio.whatsapp,
+          linktree: parsedBio.linktree,
+          delivery_link: parsedBio.digitalMenu,
+        };
 
-            leadsFound.push(lead);
-            console.log(
-              `[DISCOVERY] Novo lead capturado: ${lead.name} | WA: ${lead.whatsapp || "N/A"}`,
-            );
+        leadsFound.push(lead);
 
-            const result = await leadsRepository.createUnique({
-              campaign_id: campaignId,
-              ...lead,
-            });
-            if (!result.created) {
-              console.log(`[DISCOVERY] Lead repetido ignorado: ${lead.name}`);
-            }
-          }
-        } catch (err) {
-          // Ignora erro em um bloco específico e continua
+        console.log(
+          `[DISCOVERY] #${leadsFound.length} | ${lead.name} | WA: ${lead.whatsapp ?? "—"} | ${url}`,
+        );
+
+        // Salva no banco sem duplicar
+        const saved = await leadsRepository.createUnique({
+          campaign_id: campaignId,
+          category: keyword,
+          city,
+          source: "instagram",
+          ...lead,
+        });
+
+        if (!saved.created) {
+          console.log(`[DISCOVERY] Lead repetido ignorado: ${lead.name}`);
         }
       }
 
-      currentPage++;
+      page++;
+
+      // Pausa entre páginas para não estourar rate limit da SerpAPI
+      // (plano free: 1 req/s; plano pago: 5 req/s)
+      await delay(1200);
     }
-  } catch (error) {
-    console.error(`[DISCOVERY] Falha crítica no worker de descoberta:`, error);
-  } finally {
-    await browser.close();
-    console.log(
-      `[DISCOVERY] Processo finalizado. Total capturado: ${leadsFound.length}`,
-    );
   }
+
+  console.log(
+    `[DISCOVERY] Concluído. Total salvo: ${leadsFound.length} leads para campanha ${campaignId}`,
+  );
+
+  await runInstagramEnrichment(campaignId);
 }

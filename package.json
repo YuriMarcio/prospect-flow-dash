@@ -12,5 +12,11 @@
   },
   "devDependencies": {
     "turbo": "^2.9.14"
+  },
+  "dependencies": {
+    "libphonenumber-js": "^1.13.6",
+    "puppeteer": "^25.1.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }

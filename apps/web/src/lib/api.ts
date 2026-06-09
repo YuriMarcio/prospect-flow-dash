@@ -40,6 +40,15 @@ function text(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+// Aceita URL completa (https://www.instagram.com/username/) ou só o username
+function instagramUsername(value: unknown): string | undefined {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return undefined;
+  const match = raw.match(/instagram\.com\/([^/?#]+)/);
+  if (match) return match[1] || undefined;
+  return raw.replace(/^@/, "") || undefined;
+}
+
 function number(value: unknown, fallback = 0) {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -137,15 +146,19 @@ function normalizeLead(lead: ApiLead): Lead {
     city: text(lead.city, "Sem cidade"),
     address: text(lead.address, undefined),
     phone: text(lead.phone, text(lead.whatsapp, text(lead.fiscal_phones, ""))),
-    instagram: text(lead.instagram, text(lead.instagram_url, undefined)),
-    instagramBio: text(lead.instagramBio, text(lead.instagram_bio, undefined)),
-    followers: number(lead.followers, 0),
+    instagram: instagramUsername(lead.instagram) ?? instagramUsername(lead.instagram_url),
+    instagramBio: text(lead.instagramBio, text(lead.instagram_bio, text(lead.biography, text(lead.notes, undefined)))),
+    followers: typeof lead.followers === "number" && (lead.followers as number) > 0 ? (lead.followers as number) : undefined,
     links: [
-      ...array(lead.links),
-      ...array(lead.ifood_url),
-      ...array(lead.linktree),
-      ...array(lead.digital_menu),
-    ],
+      ...new Set([
+        ...array(lead.links),
+        ...array(lead.ifood_url),
+        ...array(lead.linktree),
+        ...array(lead.digital_menu),
+        ...array(lead.delivery_link),
+        ...array(lead.external_url),
+      ]),
+    ].filter(Boolean),
     score: number(lead.score, 50),
     status: leadStatus,
     tags: array(lead.tags),

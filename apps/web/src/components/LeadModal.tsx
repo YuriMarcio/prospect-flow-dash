@@ -6,7 +6,7 @@ import { useLeadModalStore } from "@/store/leadModal";
 import { useKanbanStore } from "@/store/kanban";
 import { StatusBadge } from "./StatusBadge";
 import { ActivityTimeline } from "./ActivityTimeline";
-import { Building2, Instagram, Phone, MapPin, Star, Calendar, User, Link as LinkIcon } from "lucide-react";
+import { Building2, Instagram, Phone, MapPin, Star, Calendar, User, Link as LinkIcon, Users, ShoppingBag, ExternalLink, FileText, MessageCircle } from "lucide-react";
 
 export function LeadModal() {
   const { leadId, close } = useLeadModalStore();
@@ -46,21 +46,55 @@ export function LeadModal() {
                 <Row icon={LinkIcon} label="CNPJ" value={lead.cnpj ?? "—"} />
                 <Row icon={Star} label="Categoria" value={lead.category} />
                 <Row icon={MapPin} label="Endereço" value={lead.address ?? "—"} />
-                <Row icon={Phone} label="Telefone" value={lead.phone} />
+                <Row
+                  icon={MessageCircle}
+                  label="WhatsApp"
+                  value={
+                    lead.phone ? (
+                      <a
+                        href={`https://wa.me/${lead.phone.replace(/\D/g, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        {lead.phone}
+                      </a>
+                    ) : "—"
+                  }
+                />
               </TabsContent>
 
               <TabsContent value="instagram" className="space-y-3 pb-6">
-                <Row icon={Instagram} label="Username" value={lead.instagram ?? "—"} />
-                <Row icon={User} label="Bio" value={lead.instagramBio ?? "—"} />
-                <Row icon={User} label="Seguidores" value={lead.followers?.toLocaleString("pt-BR") ?? "—"} />
-                <div className="rounded-lg border border-border p-3">
-                  <p className="text-xs text-muted-foreground mb-2">Links encontrados</p>
-                  <div className="space-y-1">
-                    {lead.links?.map((l) => (
-                      <a key={l} href={l} className="block text-sm text-primary hover:underline truncate">{l}</a>
+                <Row
+                  icon={Instagram}
+                  label="Perfil"
+                  value={
+                    lead.instagram ? (
+                      <a
+                        href={`https://instagram.com/${lead.instagram.replace(/^@/, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        @{lead.instagram.replace(/^@/, "")}
+                      </a>
+                    ) : "—"
+                  }
+                />
+                <Row
+                  icon={Users}
+                  label="Seguidores"
+                  value={lead.followers ? lead.followers.toLocaleString("pt-BR") : "—"}
+                />
+                <Row icon={FileText} label="Bio" value={lead.instagramBio ?? "—"} />
+                {lead.links && lead.links.length > 0 && (
+                  <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+                    <p className="text-xs text-muted-foreground px-3 py-2 bg-muted/40">Links encontrados</p>
+                    {lead.links.map((l) => (
+                      <LinkRow key={l} url={l} />
                     ))}
                   </div>
-                </div>
+                )}
               </TabsContent>
 
               <TabsContent value="comercial" className="space-y-3 pb-6">
@@ -92,8 +126,40 @@ function Row({ icon: Icon, label, value }: { icon: any; label: string; value: Re
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <div className="text-sm font-medium mt-0.5 break-words">{value}</div>
+        <div className="text-sm font-medium mt-0.5 wrap-break-word">{value}</div>
       </div>
     </div>
+  );
+}
+
+function linkMeta(url: string): { label: string; Icon: any; color: string } {
+  if (/wa\.me|whatsapp/i.test(url))                                          return { label: "WhatsApp",        Icon: MessageCircle, color: "text-green-500" };
+  if (/linktr\.ee/i.test(url))                                               return { label: "Linktree",         Icon: LinkIcon,      color: "text-emerald-500" };
+  if (/beacons\.ai|linklist\.bio|bio\.link|lnk\.bio|later\.com\/bio/i.test(url)) return { label: "Link na Bio",    Icon: LinkIcon,      color: "text-violet-400" };
+  if (/ifood\.com\.br/i.test(url))                                           return { label: "iFood",            Icon: ShoppingBag,   color: "text-red-500" };
+  if (/rappi\.com\.br/i.test(url))                                           return { label: "Rappi",            Icon: ShoppingBag,   color: "text-orange-400" };
+  if (/ubereats\.com/i.test(url))                                            return { label: "Uber Eats",        Icon: ShoppingBag,   color: "text-green-600" };
+  if (/goomer\.app|olaclick\.com|menudino\.com|hubt\.com\.br/i.test(url))   return { label: "Cardápio Digital", Icon: ShoppingBag,   color: "text-blue-500" };
+  // Para links desconhecidos, mostra o hostname como label
+  try { return { label: new URL(url).hostname.replace(/^www\./, ""), Icon: ExternalLink, color: "text-muted-foreground" }; } catch {}
+  return                                                                             { label: "Link externo",     Icon: ExternalLink,  color: "text-muted-foreground" };
+}
+
+function LinkRow({ url }: { url: string }) {
+  const { label, Icon, color } = linkMeta(url);
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-3 px-3 py-2.5 hover:bg-accent transition-colors group"
+    >
+      <Icon className={`h-4 w-4 shrink-0 ${color}`} />
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] text-muted-foreground">{label}</p>
+        <p className="text-sm text-primary truncate group-hover:underline">{url}</p>
+      </div>
+      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+    </a>
   );
 }

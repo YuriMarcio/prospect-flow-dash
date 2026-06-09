@@ -23,6 +23,7 @@ export async function create(data: Record<string, unknown>) {
   };
 
   return await insertWithAvailableColumns(payload);
+  
 }
 
 export async function findAll() {
