@@ -16,10 +16,22 @@ export function ConfiguracoesPage() {
       <section className="rounded-xl border border-border bg-card p-6 space-y-5">
         <h2 className="text-sm font-semibold">Conta</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5"><Label>Nome</Label><Input defaultValue="Ana Silva" /></div>
-          <div className="space-y-1.5"><Label>Email</Label><Input defaultValue="ana@prospect.ai" /></div>
-          <div className="space-y-1.5"><Label>Empresa</Label><Input defaultValue="ProspectAI" /></div>
-          <div className="space-y-1.5"><Label>Telefone</Label><Input defaultValue="(11) 99999-9999" /></div>
+          <div className="space-y-1.5">
+            <Label>Nome</Label>
+            <Input defaultValue="nome" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Email</Label>
+            <Input defaultValue="ana@prospect.ai" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Empresa</Label>
+            <Input defaultValue="ProspectAI" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Telefone</Label>
+            <Input defaultValue="(11) 99999-9999" />
+          </div>
         </div>
         <Button>Salvar alterações</Button>
       </section>
@@ -37,7 +49,12 @@ export function ConfiguracoesPage() {
 
       <section className="rounded-xl border border-border bg-card p-6 space-y-4">
         <h2 className="text-sm font-semibold">Notificações</h2>
-        {["Novos leads capturados", "Movimentações no pipeline", "Capturas concluídas", "Resumo semanal"].map((n) => (
+        {[
+          "Novos leads capturados",
+          "Movimentações no pipeline",
+          "Capturas concluídas",
+          "Resumo semanal",
+        ].map((n) => (
           <div key={n} className="flex items-center justify-between">
             <p className="text-sm">{n}</p>
             <Switch defaultChecked />

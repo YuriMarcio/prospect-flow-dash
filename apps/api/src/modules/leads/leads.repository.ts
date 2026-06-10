@@ -1,5 +1,12 @@
 import { getSupabase } from "../../lib/supabase";
 
+export async function deleteMany(ids: string[]) {
+  if (ids.length === 0) return;
+  const supabase = getSupabase();
+  const { error } = await supabase.from("leads").delete().in("id", ids);
+  if (error) throw new Error(error.message);
+}
+
 export async function findAll() {
   const supabase = getSupabase();
   const { data, error } = await supabase
@@ -37,15 +44,16 @@ export async function update(id: string, data: Record<string, unknown>) {
 }
 
 export async function createUnique(data: Record<string, unknown>) {
-  const duplicate = await findDuplicate(data);
-  if (duplicate) return { lead: duplicate, created: false };
+  const isDuplicate = await findDuplicate(data);
+  if (isDuplicate) return { lead: null, created: false };
 
   const lead = await insertWithAvailableColumns(data);
   return { lead, created: true };
 }
 
 async function findDuplicate(data: Record<string, unknown>) {
-  const leads = await findAll();
+  const supabase = getSupabase();
+
   const cnpj = normalize(data.cnpj);
   const instagramUrl = normalize(data.instagram_url ?? data.instagram);
   const ifoodUrl = normalize(data.ifood_url);
@@ -53,25 +61,56 @@ async function findDuplicate(data: Record<string, unknown>) {
   const name = normalize(data.name ?? data.company_name ?? data.companyName);
   const address = normalize(data.address);
 
-  return leads?.find((lead) => {
-    const row = lead as Record<string, unknown>;
-    if (cnpj && normalize(row.cnpj) === cnpj) return true;
-    if (
-      instagramUrl &&
-      normalize(row.instagram_url ?? row.instagram) === instagramUrl
-    )
-      return true;
-    if (ifoodUrl && normalize(row.ifood_url) === ifoodUrl) return true;
-    if (whatsapp && onlyDigits(row.whatsapp ?? row.phone) === whatsapp)
-      return true;
+  // Busca no banco por cada campo único separadamente (evita carregar tudo em memória)
+  const checks: Promise<boolean>[] = [];
 
-    return Boolean(
-      name &&
-      address &&
-      normalize(row.name ?? row.company_name ?? row.companyName) === name &&
-      normalize(row.address) === address,
+  if (cnpj) {
+    checks.push(
+      supabase.from("leads").select("id").ilike("cnpj", cnpj).limit(1)
+        .then(({ data: rows }) => Boolean(rows?.length)),
     );
-  });
+  }
+
+  if (instagramUrl) {
+    // Tenta as duas variações de coluna usadas no banco
+    checks.push(
+      supabase.from("leads").select("id").ilike("instagram_url", instagramUrl).limit(1)
+        .then(({ data: rows }) => Boolean(rows?.length)),
+    );
+    checks.push(
+      supabase.from("leads").select("id").ilike("instagram", instagramUrl).limit(1)
+        .then(({ data: rows }) => Boolean(rows?.length)),
+    );
+  }
+
+  if (ifoodUrl) {
+    checks.push(
+      supabase.from("leads").select("id").ilike("ifood_url", ifoodUrl).limit(1)
+        .then(({ data: rows }) => Boolean(rows?.length)),
+    );
+  }
+
+  if (whatsapp) {
+    checks.push(
+      supabase.from("leads").select("id").ilike("whatsapp", `%${whatsapp}%`).limit(1)
+        .then(({ data: rows }) => Boolean(rows?.length)),
+    );
+  }
+
+  if (name && address) {
+    checks.push(
+      supabase.from("leads").select("id")
+        .ilike("name", name)
+        .ilike("address", address)
+        .limit(1)
+        .then(({ data: rows }) => Boolean(rows?.length)),
+    );
+  }
+
+  if (checks.length === 0) return null;
+
+  const results = await Promise.all(checks);
+  return results.some(Boolean) ? true : null;
 }
 
 async function insertWithAvailableColumns(payload: Record<string, unknown>) {

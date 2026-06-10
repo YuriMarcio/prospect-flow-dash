@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { listLeadsService, getLeadService, updateLeadService } from "./leads.service";
+import { listLeadsService, getLeadService, updateLeadService, deduplicateLeadsService } from "./leads.service";
 
 export async function listLeadsController(request: FastifyRequest, reply: FastifyReply) {
   const result = await listLeadsService();
@@ -13,5 +13,10 @@ export async function getLeadController(request: FastifyRequest<{ Params: { id: 
 
 export async function updateLeadController(request: FastifyRequest<{ Params: { id: string }, Body: any }>, reply: FastifyReply) {
   const result = await updateLeadService(request.params.id, request.body);
+  return reply.send(result);
+}
+
+export async function deduplicateLeadsController(request: FastifyRequest, reply: FastifyReply) {
+  const result = await deduplicateLeadsService();
   return reply.send(result);
 }

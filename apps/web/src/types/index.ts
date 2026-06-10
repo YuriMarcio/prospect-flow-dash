@@ -20,6 +20,7 @@ export interface Lead {
   lastInteraction: string;
   nextFollowUp?: string;
   timeline: TimelineEvent[];
+  createdAt?: string;
 }
 
 export interface TimelineEvent {

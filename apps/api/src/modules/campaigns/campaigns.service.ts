@@ -42,12 +42,13 @@ export async function campaignleadsearchService(data: Record<string, unknown>) {
   // Fire-and-forget: não aguarda — responde ao cliente imediatamente
   runInstagramDiscovery(
     campaign.id,
-    data.category as string,   // Ex: "hamburgueria"
-    data.city as string,       // Ex: "São Luís"
+    data.category as string,
+    data.city as string,
     (data.quantity as number) ?? 100,
-  ).catch((err) =>
-    console.error(`[SERVICE] Worker falhou para campanha ${campaign.id}:`, err),
-  );
+  ).catch(async (err) => {
+    console.error(`[SERVICE] Worker falhou para campanha ${campaign.id}:`, err);
+    await campaignsRepository.updateStatus(campaign.id, "error").catch(() => {});
+  });
 
   return campaign;
 }

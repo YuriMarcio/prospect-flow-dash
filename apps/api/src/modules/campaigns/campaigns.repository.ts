@@ -62,6 +62,15 @@ export async function updateStatus(id: string, status: string) {
   return campaign;
 }
 
+export async function updateStats(
+  id: string,
+  patch: { status?: string; processed?: number; found?: number; error_count?: number },
+) {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("campaigns").update(patch).eq("id", id);
+  if (error) console.error(`[CAMPAIGN] Falha ao atualizar stats: ${error.message}`);
+}
+
 async function insertWithAvailableColumns(payload: Record<string, unknown>) {
   const supabase = getSupabase();
   const remainingPayload = { ...payload };

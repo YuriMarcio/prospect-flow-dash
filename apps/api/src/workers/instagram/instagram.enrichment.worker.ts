@@ -6,6 +6,20 @@ import {
   extractLinktreeFromBio,
   extractDeliveryLinkFromBio,
 } from "./instagram.parser";
+import * as logsRepository from "../../modules/logs/logs.repository";
+
+async function log(
+  campaignId: string,
+  message: string,
+  level: "info" | "warn" | "error" = "info",
+) {
+  console.log(`[ENRICHMENT] ${message}`);
+  try {
+    await logsRepository.create(campaignId, `[ENRICHMENT] ${message}`, level);
+  } catch {
+    // não deixa falha de log derrubar o worker
+  }
+}
 
 // ---------------------------------------------------------------------------
 // TIPOS
@@ -53,7 +67,7 @@ async function fetchInstagramProfile(handle: string): Promise<ScrapeCreatorsProf
 // ---------------------------------------------------------------------------
 
 export async function runInstagramEnrichment(campaignId: string): Promise<void> {
-  console.log(`[ENRICHMENT] Iniciando enriquecimento para campanha ${campaignId}`);
+  await log(campaignId, `Iniciando enriquecimento`);
 
   const supabase = getSupabase();
 
@@ -65,23 +79,23 @@ export async function runInstagramEnrichment(campaignId: string): Promise<void> 
     .not("instagram", "is", null);
 
   if (error) {
-    console.error("[ENRICHMENT] Erro ao buscar leads:", error.message);
+    await log(campaignId, `Erro ao buscar leads: ${error.message}`, "error");
     return;
   }
 
   if (!leads || leads.length === 0) {
-    console.log("[ENRICHMENT] Nenhum lead pendente para enriquecer.");
+    await log(campaignId, `Nenhum lead pendente para enriquecer.`);
     return;
   }
 
-  console.log(`[ENRICHMENT] ${leads.length} leads para enriquecer.`);
+  await log(campaignId, `${leads.length} leads para enriquecer.`);
 
   for (let i = 0; i < (leads as LeadRow[]).length; i++) {
     const lead = (leads as LeadRow[])[i];
     const username = extractUsernameFromUrl(lead.instagram);
 
     if (!username) {
-      console.log(`[ENRICHMENT] #${i + 1} | ${lead.name} | URL inválida, pulando.`);
+      await log(campaignId, `#${i + 1} | ${lead.name} | URL inválida, pulando.`, "warn");
       continue;
     }
 
@@ -89,7 +103,7 @@ export async function runInstagramEnrichment(campaignId: string): Promise<void> 
       const profile = await fetchInstagramProfile(username);
 
       if (!profile) {
-        console.log(`[ENRICHMENT] #${i + 1} | ${lead.name} | Perfil não encontrado.`);
+        await log(campaignId, `#${i + 1} | ${lead.name} | Perfil não encontrado.`, "warn");
         continue;
       }
 
@@ -114,16 +128,13 @@ export async function runInstagramEnrichment(campaignId: string): Promise<void> 
         })
         .eq("id", lead.id);
 
-      console.log(
-        `[ENRICHMENT] #${i + 1} | ${lead.name}` +
-        ` | WA: ${whatsapp ?? "—"}` +
-        ` | LT: ${linktree ?? "—"}` +
-        ` | Delivery: ${deliveryLink ?? "—"}` +
-        ` | Seguidores: ${profile.follower_count ?? "—"}`,
+      await log(
+        campaignId,
+        `#${i + 1} | ${lead.name} | WA: ${whatsapp ?? "—"} | Seguidores: ${profile.follower_count ?? "—"}`,
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[ENRICHMENT] #${i + 1} | ${lead.name} | Erro: ${msg}`);
+      await log(campaignId, `#${i + 1} | ${lead.name} | Erro: ${msg}`, "error");
     }
 
     if (i < (leads as LeadRow[]).length - 1) {
@@ -131,5 +142,5 @@ export async function runInstagramEnrichment(campaignId: string): Promise<void> 
     }
   }
 
-  console.log(`[ENRICHMENT] Concluído para campanha ${campaignId}.`);
+  await log(campaignId, `Enriquecimento concluído.`);
 }

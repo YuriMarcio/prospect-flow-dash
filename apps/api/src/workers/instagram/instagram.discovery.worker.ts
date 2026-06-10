@@ -2,6 +2,25 @@ import axios from "axios";
 import { parseInstagramBio } from "./instagram.parser";
 import { runInstagramEnrichment } from "./instagram.enrichment.worker";
 import * as leadsRepository from "../../modules/leads/leads.repository";
+import * as logsRepository from "../../modules/logs/logs.repository";
+import * as campaignsRepository from "../../modules/campaigns/campaigns.repository";
+
+// ---------------------------------------------------------------------------
+// LOGGER — persiste no banco E no console
+// ---------------------------------------------------------------------------
+
+async function log(
+  campaignId: string,
+  message: string,
+  level: "info" | "warn" | "error" = "info",
+) {
+  console.log(`[DISCOVERY] ${message}`);
+  try {
+    await logsRepository.create(campaignId, message, level);
+  } catch {
+    // não deixa falha de log derrubar o worker
+  }
+}
 
 // ---------------------------------------------------------------------------
 // TIPOS
@@ -112,7 +131,8 @@ export async function runInstagramDiscovery(
   city: string,      // Ex: "São Luís", "São Paulo"
   quantity: number,
 ): Promise<void> {
-  console.log(`[DISCOVERY] Iniciando busca: "${keyword}" em "${city}" | meta: ${quantity} leads`);
+  await campaignsRepository.updateStats(campaignId, { status: "running", processed: 0, found: 0 });
+  await log(campaignId, `Iniciando busca: "${keyword}" em "${city}" | meta: ${quantity} leads`);
 
   // Monta variações da query para maximizar cobertura
   const queries = [
@@ -130,14 +150,14 @@ export async function runInstagramDiscovery(
     let page = 0;
     let emptyPages = 0;
 
-    console.log(`[DISCOVERY] Query: ${query}`);
+    await log(campaignId, `Query: ${query}`);
 
     while (leadsFound.length < quantity && emptyPages < 2) {
       const results = await searchGoogle(query, page * 10);
 
       if (results.length === 0) {
         emptyPages++;
-        console.log(`[DISCOVERY] Página ${page + 1} vazia. (${emptyPages}/2 antes de parar)`);
+        await log(campaignId, `Página ${page + 1} vazia. (${emptyPages}/2 antes de parar)`, "warn");
         break;
       }
 
@@ -146,13 +166,11 @@ export async function runInstagramDiscovery(
 
         const url = result.link;
 
-        // Ignora se não for perfil ou já foi visto
         if (!isProfileUrl(url) || seenUrls.has(url)) continue;
         seenUrls.add(url);
 
         const name = extractNameFromTitle(result.title);
         const snippet = result.snippet ?? "";
-
         const parsedBio = parseInstagramBio(snippet);
 
         const lead: DiscoveryLead = {
@@ -166,11 +184,11 @@ export async function runInstagramDiscovery(
 
         leadsFound.push(lead);
 
-        console.log(
-          `[DISCOVERY] #${leadsFound.length} | ${lead.name} | WA: ${lead.whatsapp ?? "—"} | ${url}`,
+        await log(
+          campaignId,
+          `#${leadsFound.length} | ${lead.name} | WA: ${lead.whatsapp ?? "—"} | ${url}`,
         );
 
-        // Salva no banco sem duplicar
         const saved = await leadsRepository.createUnique({
           campaign_id: campaignId,
           category: keyword,
@@ -180,21 +198,26 @@ export async function runInstagramDiscovery(
         });
 
         if (!saved.created) {
-          console.log(`[DISCOVERY] Lead repetido ignorado: ${lead.name}`);
+          await log(campaignId, `Lead repetido ignorado: ${lead.name}`, "warn");
+        } else {
+          // Incrementa contadores em tempo real
+          await campaignsRepository.updateStats(campaignId, {
+            processed: leadsFound.length,
+            found: leadsFound.length,
+          });
         }
       }
 
       page++;
-
-      // Pausa entre páginas para não estourar rate limit da SerpAPI
-      // (plano free: 1 req/s; plano pago: 5 req/s)
       await delay(1200);
     }
   }
 
-  console.log(
-    `[DISCOVERY] Concluído. Total salvo: ${leadsFound.length} leads para campanha ${campaignId}`,
-  );
-
+  await log(campaignId, `Concluído. Total salvo: ${leadsFound.length} leads`);
+  await campaignsRepository.updateStats(campaignId, {
+    status: "done",
+    processed: leadsFound.length,
+    found: leadsFound.length,
+  });
   await runInstagramEnrichment(campaignId);
 }

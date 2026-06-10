@@ -170,12 +170,17 @@ function normalizeLead(lead: ApiLead): Lead {
     lastInteraction: text(lead.lastInteraction, text(lead.last_interaction, "sem interação")),
     nextFollowUp: text(lead.nextFollowUp, text(lead.next_follow_up, undefined)),
     timeline: timeline(lead.timeline),
+    createdAt: typeof lead.created_at === "string" ? lead.created_at : undefined,
   };
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const hasBody = init?.body != null;
   const response = await fetch(`${API_URL}${path}`, {
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: {
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
     ...init,
   });
 
@@ -241,6 +246,10 @@ export async function updateLead(id: string, patch: Partial<Lead>) {
   });
 
   return normalizeLead(lead);
+}
+
+export async function deduplicateLeads(): Promise<{ removed: number }> {
+  return request<{ removed: number }>("/leads/dedup", { method: "POST" });
 }
 
 export function getStatusForColumn(columnId: string) {
