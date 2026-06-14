@@ -255,3 +255,22 @@ export async function deduplicateLeads(): Promise<{ removed: number }> {
 export function getStatusForColumn(columnId: string) {
   return statusByColumnId[columnId];
 }
+
+export async function getInstaDeliveryCities(): Promise<string[]> {
+  return request<string[]>("/campaigns/instadelivery/cities");
+}
+
+export async function createInstaDeliveryCampaign(input: {
+  city: string;
+  quantity: number;
+}): Promise<Capture> {
+  const campaign = await request<ApiCampaign>("/campaigns/campaigninstadelivery", {
+    method: "POST",
+    body: JSON.stringify({
+      city: input.city,
+      quantity: input.quantity,
+      category: "Delivery",
+    }),
+  });
+  return normalizeCampaign(campaign);
+}

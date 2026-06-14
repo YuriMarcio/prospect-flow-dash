@@ -43,6 +43,17 @@ export async function update(id: string, data: Record<string, unknown>) {
   return lead;
 }
 
+export async function existsByNameAndCity(name: string, city: string): Promise<boolean> {
+  const supabase = getSupabase();
+  const { data: rows } = await supabase
+    .from("leads")
+    .select("id")
+    .ilike("name", name.trim().toLowerCase())
+    .ilike("city", city.trim().toLowerCase())
+    .limit(1);
+  return Boolean(rows?.length);
+}
+
 export async function createUnique(data: Record<string, unknown>) {
   const isDuplicate = await findDuplicate(data);
   if (isDuplicate) return { lead: null, created: false };

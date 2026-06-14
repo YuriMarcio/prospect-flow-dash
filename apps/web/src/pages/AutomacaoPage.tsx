@@ -1,15 +1,24 @@
 import { Link } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Bot, ExternalLink, Rocket, Search } from "lucide-react";
+import { Bot, CheckCircle2, ExternalLink, Loader2, Rocket, Search, Store, Terminal, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createCampaign } from "@/lib/api";
+import { Progress } from "@/components/ui/progress";
+import {
+  createCampaign,
+  createInstaDeliveryCampaign,
+  getInstaDeliveryCities,
+  listCampaignLogs,
+  listCampaigns,
+} from "@/lib/api";
 import { useWatch } from "react-hook-form";
+import type { Capture } from "@/types";
 
 const CATEGORIES = [
   // Alimentação
@@ -130,8 +139,121 @@ function SearchPreview({
   );
 }
 
+// ─── Monitor de campanha ativa ───────────────────────────────────────────────
+
+function ActiveCampaignMonitor({ campaign }: { campaign: Capture }) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const isRunning = campaign.status === "running";
+
+  const logsQuery = useQuery({
+    queryKey: ["logs", campaign.id],
+    queryFn: () => listCampaignLogs(campaign.id),
+    refetchInterval: isRunning ? 3000 : false,
+  });
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logsQuery.data?.length]);
+
+  const logs = logsQuery.data ?? [];
+  const pct = campaign.quantity > 0
+    ? Math.min(100, Math.round((campaign.processed / campaign.quantity) * 100))
+    : 0;
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 bg-muted/40 border-b border-border">
+        {isRunning ? (
+          <Loader2 className="h-4 w-4 text-primary animate-spin shrink-0" />
+        ) : campaign.status === "done" ? (
+          <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+        ) : (
+          <XCircle className="h-4 w-4 text-destructive shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{campaign.category} — {campaign.city}</p>
+          <p className="text-[11px] text-muted-foreground">
+            {campaign.found} leads salvos · {campaign.processed}/{campaign.quantity} processados
+          </p>
+        </div>
+        {isRunning && (
+          <span className="flex items-center gap-1 text-[10px] text-green-400 font-mono shrink-0">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+            AO VIVO
+          </span>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      <div className="px-4 py-2 border-b border-border">
+        <Progress value={pct} className="h-1.5" />
+      </div>
+
+      {/* Terminal de logs */}
+      <div className="bg-zinc-950">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border-b border-zinc-800">
+          <span className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
+          <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
+          <span className="h-2.5 w-2.5 rounded-full bg-green-500/70" />
+          <Terminal className="h-3 w-3 text-zinc-500 ml-1" />
+          <span className="text-[10px] text-zinc-500 font-mono">capture.log</span>
+        </div>
+        <div className="font-mono text-[11px] p-3 space-y-0.5 max-h-52 overflow-y-auto text-zinc-300">
+          {logs.length === 0 && (
+            <p className="text-zinc-600">$ Aguardando logs…</p>
+          )}
+          {logs.map((log, i) => (
+            <div key={i} className="flex gap-2 leading-5">
+              <span className="text-zinc-600 shrink-0 tabular-nums">{log.time}</span>
+              <span className={
+                log.level === "error" ? "text-red-400 shrink-0"
+                : log.level === "warn" ? "text-yellow-400 shrink-0"
+                : "text-zinc-500 shrink-0"
+              }>
+                [{log.level.toUpperCase().padEnd(4)}]
+              </span>
+              <span className={
+                log.level === "error" ? "text-red-300"
+                : log.level === "warn" ? "text-yellow-300"
+                : "text-zinc-300"
+              }>
+                {log.message}
+              </span>
+            </div>
+          ))}
+          {isRunning && (
+            <div className="text-green-400 pt-0.5">
+              <span className="animate-pulse">▋</span>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Página principal ────────────────────────────────────────────────────────
+
 export function AutomacaoPage() {
   const queryClient = useQueryClient();
+
+  // Campanhas: polling enquanto alguma está rodando
+  const campaignsQuery = useQuery({
+    queryKey: ["campaigns"],
+    queryFn: listCampaigns,
+    refetchInterval: (q) => {
+      const data = q.state.data as Capture[] | undefined;
+      return data?.some((c) => c.status === "running") ? 3000 : false;
+    },
+  });
+
+  const campaigns = campaignsQuery.data ?? [];
+  const activeCampaign = campaigns.find((c) => c.status === "running")
+    ?? (campaigns[0]?.status === "done" || campaigns[0]?.status === "error" ? campaigns[0] : undefined);
+  const anyRunning = campaigns.some((c) => c.status === "running");
+
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -183,6 +305,7 @@ export function AutomacaoPage() {
       <form
         onSubmit={form.handleSubmit(onSubmit)}
         className="rounded-xl border border-border bg-card p-6 space-y-5"
+        id="instagram-form"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Segmento / Categoria *" error={form.formState.errors.category?.message}>
@@ -221,9 +344,107 @@ export function AutomacaoPage() {
           >
             Ver execuções →
           </Link>
-          <Button type="submit" size="lg" className="glow-primary" disabled={mutation.isPending}>
+          <Button type="submit" size="lg" className="glow-primary" disabled={mutation.isPending || anyRunning}>
             <Rocket className="h-4 w-4" />
-            {mutation.isPending ? "Iniciando…" : "Iniciar Captura"}
+            {mutation.isPending ? "Iniciando…" : anyRunning ? "Aguarde a captura atual…" : "Iniciar Captura"}
+          </Button>
+        </div>
+      </form>
+
+      <InstaDeliveryForm anyRunning={anyRunning} />
+
+      {activeCampaign && <ActiveCampaignMonitor campaign={activeCampaign} />}
+    </div>
+  );
+}
+
+const instaDeliverySchema = z.object({
+  city: z.string().min(1, "Selecione uma cidade"),
+  quantity: z.coerce.number().min(1).max(200),
+});
+
+type InstaDeliveryFormData = z.infer<typeof instaDeliverySchema>;
+
+function InstaDeliveryForm({ anyRunning }: { anyRunning: boolean }) {
+  const queryClient = useQueryClient();
+
+  const citiesQuery = useQuery({
+    queryKey: ["instadelivery-cities"],
+    queryFn: getInstaDeliveryCities,
+    staleTime: Infinity,
+  });
+
+  const form = useForm<InstaDeliveryFormData>({
+    resolver: zodResolver(instaDeliverySchema),
+    defaultValues: { city: "", quantity: 50 },
+  });
+
+  const mutation = useMutation({
+    mutationFn: (data: InstaDeliveryFormData) => createInstaDeliveryCampaign(data),
+    onSuccess: (campaign) => {
+      toast.success("Captura InstaDelivery iniciada!", {
+        description: `${campaign.city} • até ${campaign.quantity} lojas`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      form.reset({ city: "", quantity: 50 });
+    },
+    onError: (error) => {
+      toast.error("Não foi possível iniciar a captura", {
+        description: error instanceof Error ? error.message : "Tente novamente em instantes.",
+      });
+    },
+  });
+
+  const onSubmit = (data: InstaDeliveryFormData) => mutation.mutate(data);
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-6 space-y-5">
+      <div className="flex items-center gap-2">
+        <Store className="h-4 w-4 text-primary" />
+        <h2 className="text-sm font-semibold">Captura via InstaDelivery</h2>
+        <span className="ml-auto text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+          Extrai nome + WhatsApp das lojas
+        </span>
+      </div>
+
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Cidade *" error={form.formState.errors.city?.message}>
+            <Input
+              list="id-city-list"
+              placeholder="Digite ou selecione uma cidade…"
+              {...form.register("city")}
+              autoComplete="off"
+            />
+            <datalist id="id-city-list">
+              {(citiesQuery.data ?? []).map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </Field>
+
+          <Field label="Máx. de lojas *" error={form.formState.errors.quantity?.message}>
+            <Input type="number" min={1} max={200} {...form.register("quantity")} />
+          </Field>
+        </div>
+
+        <div className="rounded-lg border border-border bg-muted/30 p-3 text-[11px] text-muted-foreground space-y-1">
+          <p>• Raspa todas as lojas da cidade no portal InstaDelivery (scroll infinito)</p>
+          <p>• Extrai WhatsApp de cada loja e busca o Instagram via Google</p>
+          <p>• Leads salvos com <code className="bg-background px-1 rounded">source: instadelivery</code></p>
+        </div>
+
+        <div className="flex items-center justify-between pt-2 border-t border-border">
+          <Link
+            to="/capturas"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Ver execuções →
+          </Link>
+          <Button type="submit" size="lg" disabled={mutation.isPending || citiesQuery.isLoading || anyRunning}>
+            <Store className="h-4 w-4" />
+            {mutation.isPending ? "Iniciando…" : anyRunning ? "Aguarde a captura atual…" : "Iniciar Captura InstaDelivery"}
           </Button>
         </div>
       </form>

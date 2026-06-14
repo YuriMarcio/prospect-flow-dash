@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { createRequire } from "module";
 
 import {
   createCampaignController,
@@ -6,8 +7,12 @@ import {
   getCampaignController,
   startCampaignController,
   campaignleadsearchController,
-  campaignleadsearchinstaController
+  campaignleadsearchinstaController,
+  campaignInstaDeliveryController,
 } from "./campaigns.controller";
+
+const require = createRequire(import.meta.url);
+const instaDeliveryCities: string[] = require("../../data/instadelivery-cities.json");
 
 export async function campaignsRoutes(
   app: FastifyInstance
@@ -40,4 +45,10 @@ export async function campaignsRoutes(
     "/:id/start",
     startCampaignController
   );
+
+  app.get("/instadelivery/cities", async (_req, reply) => {
+    return reply.send(instaDeliveryCities);
+  });
+
+  app.post("/campaigninstadelivery", campaignInstaDeliveryController);
 }

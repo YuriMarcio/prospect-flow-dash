@@ -1,5 +1,6 @@
 import * as campaignsRepository from "./campaigns.repository";
 import { runInstagramDiscovery } from "../../workers/instagram/instagram.discovery.worker";
+import { runInstaDeliveryScraping } from "../../workers/instadelivery/instadelivery.worker";
 
 // ---------------------------------------------------------------------------
 // CRUD básico
@@ -86,6 +87,33 @@ export async function campaignInstagramSearchService(data: Record<string, unknow
  *
  * Útil para reprocessar campanhas que falharam ou foram pausadas.
  */
+// ---------------------------------------------------------------------------
+// CRIAR + INICIAR INSTADELIVERY (chamado pelo endpoint POST /campaigns/campaigninstadelivery)
+// ---------------------------------------------------------------------------
+
+export async function campaignInstaDeliverySearchService(data: Record<string, unknown>) {
+  const campaign = await campaignsRepository.create(data);
+
+  if (!campaign) {
+    throw new Error("Falha ao criar campanha no banco de dados");
+  }
+
+  runInstaDeliveryScraping(
+    campaign.id,
+    data.city as string,
+    (data.quantity as number) ?? 50,
+  ).catch(async (err) => {
+    console.error(`[SERVICE] InstaDelivery worker falhou para campanha ${campaign.id}:`, err);
+    await campaignsRepository.updateStatus(campaign.id, "error").catch(() => {});
+  });
+
+  return campaign;
+}
+
+// ---------------------------------------------------------------------------
+// START (chamado pelo endpoint POST /campaigns/:id/start)
+// ---------------------------------------------------------------------------
+
 export async function startCampaignService(id: string) {
   const campaign = await campaignsRepository.findById(id);
   if (!campaign) throw new Error("Campanha não encontrada");

@@ -6,6 +6,7 @@ import {
   getCampaignService,
   startCampaignService,
   campaignInstagramSearchService,
+  campaignInstaDeliverySearchService,
 } from "./campaigns.service";
 
 export async function createCampaignController(
@@ -43,6 +44,14 @@ export async function campaignleadsearchinstaController(
   });
 
   return reply.status(202).send({ message: "Campanha Insta iniciada com sucesso." });
+}
+
+export async function campaignInstaDeliveryController(
+  request: FastifyRequest<{ Body: Record<string, unknown> }>,
+  reply: FastifyReply,
+) {
+  const result = await campaignInstaDeliverySearchService(request.body);
+  return reply.status(201).send(result);
 }
 
 export async function listCampaignsController(
