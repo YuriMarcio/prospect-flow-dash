@@ -1,8 +1,12 @@
 import "dotenv/config";
 
 import Fastify from "fastify";
+import fastifyCookie from "@fastify/cookie";
+import fastifyJwt from "@fastify/jwt";
 
 // Importando todas as rotas da nossa arquitetura
+import { authRoutes } from "./modules/auth/auth.routes";
+import { SESSION_COOKIE_NAME } from "./modules/auth/auth.constants";
 import { campaignsRoutes } from "./modules/campaigns/campaigns.routes";
 import { dashboardRoutes } from "./modules/dashboard/dashboard.routes";
 import { leadsRoutes } from "./modules/leads/leads.routes";
@@ -19,14 +23,30 @@ const app = Fastify({
   bodyLimit: 20 * 1024 * 1024,
 });
 
+// Rotas acessíveis sem sessão: health check, login, e o webhook que a
+// própria Evolution API chama de fora (não tem como mandar nosso cookie).
+const PUBLIC_PATHS = new Set(["/", "/auth/login"]);
+const PUBLIC_PATH_PREFIXES = ["/prospector/webhook/"];
+
+function isPublicPath(url: string): boolean {
+  const path = url.split("?")[0];
+  return PUBLIC_PATHS.has(path) || PUBLIC_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
 async function bootstrap() {
   try {
-    // 1. Registrando CORS
+    const allowedOrigins = (process.env.WEB_ORIGIN ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+
+    // 1. Registrando CORS (allow-list, com suporte a cookies)
     app.addHook("onRequest", async (request, reply) => {
-      reply.header(
-        "Access-Control-Allow-Origin",
-        request.headers.origin ?? "*",
-      );
+      const origin = request.headers.origin;
+      if (origin && allowedOrigins.includes(origin)) {
+        reply.header("Access-Control-Allow-Origin", origin);
+        reply.header("Access-Control-Allow-Credentials", "true");
+      }
       reply.header(
         "Access-Control-Allow-Methods",
         "GET,POST,PATCH,PUT,DELETE,OPTIONS",
@@ -39,7 +59,29 @@ async function bootstrap() {
 
     app.options("*", async (_request, reply) => reply.status(204).send());
 
-    // 2. Health Check
+    if (!process.env.SESSION_SECRET) {
+      throw new Error("Configure SESSION_SECRET no .env para habilitar o login.");
+    }
+
+    await app.register(fastifyCookie);
+    await app.register(fastifyJwt, {
+      secret: process.env.SESSION_SECRET,
+      cookie: { cookieName: SESSION_COOKIE_NAME, signed: false },
+    });
+
+    // 2. Gate de autenticação global — exige sessão válida em toda rota,
+    // exceto as públicas listadas acima.
+    app.addHook("preHandler", async (request, reply) => {
+      if (request.method === "OPTIONS" || isPublicPath(request.url)) return;
+
+      try {
+        await request.jwtVerify();
+      } catch {
+        return reply.status(401).send({ error: "Não autenticado." });
+      }
+    });
+
+    // 3. Health Check
     app.get("/", async () => {
       return {
         ok: true,
@@ -47,7 +89,8 @@ async function bootstrap() {
       };
     });
 
-    // 3. Registrando os Módulos (Nossos 4 pilares)
+    // 4. Registrando os Módulos (Nossos 4 pilares)
+    await app.register(authRoutes, { prefix: "/auth" });
     await app.register(dashboardRoutes, { prefix: "/dashboard" });
     await app.register(campaignsRoutes, { prefix: "/campaigns" });
     await app.register(leadsRoutes, { prefix: "/leads" });
@@ -55,14 +98,14 @@ async function bootstrap() {
     await app.register(workersRoutes, { prefix: "/workers" });
     await app.register(prospectorRoutes, { prefix: "/prospector" });
 
-    // 4. Iniciando o servidor
+    // 5. Iniciando o servidor
     // O host "0.0.0.0" é importante se for rodar em Docker ou cloud depois
     await app.listen({
       port: Number(process.env.PORT ?? 3333),
       host: "0.0.0.0",
     });
 
-    // 5. Bot de prospecção: dispatcher a cada 60s + builder diário às 07:45
+    // 6. Bot de prospecção: dispatcher a cada 60s + builder diário às 07:45
     setupProspectorScheduler();
   } catch (err) {
     app.log.error(err);

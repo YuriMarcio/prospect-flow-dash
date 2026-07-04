@@ -1,10 +1,12 @@
 import { Bell, Menu, Moon, Search, Sun, X } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import { useThemeStore } from "@/store/theme";
 import { useFiltersStore } from "@/store/filters";
 import { useMobileSidebarStore } from "@/store/mobileSidebar";
 import { useLeadModalStore } from "@/store/leadModal";
+import { useAuthStore } from "@/store/auth";
+import { logout } from "@/lib/api";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +28,19 @@ export function Header() {
   const { toggle: toggleMobileSidebar } = useMobileSidebarStore();
   const openLead = useLeadModalStore((s) => s.open);
   const { notifications, markRead, markAllRead, dismiss, snooze } = useNotificationsStore();
+  const navigate = useNavigate();
+  const username = useAuthStore((s) => s.username);
+  const clearAuth = useAuthStore((s) => s.clear);
+  const initials = (username ?? "?").slice(0, 2).toUpperCase();
+
+  async function handleLogout() {
+    try {
+      await logout();
+    } finally {
+      clearAuth();
+      await navigate({ to: "/login" });
+    }
+  }
 
   const dueNow = notifications.filter((n) => !n.read && isDue(n));
   const upcoming = notifications.filter((n) => !n.read && !isDue(n));
@@ -182,11 +197,11 @@ export function Header() {
             <button className="flex items-center gap-2 ml-1 pl-1 pr-2 py-1 rounded-lg hover:bg-accent transition">
               <Avatar className="h-7 w-7">
                 <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">
-                  AS
+                  {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="hidden sm:flex flex-col text-left leading-tight">
-                <span className="text-xs font-medium">Irmãos</span>
+                <span className="text-xs font-medium">{username ?? "—"}</span>
                 <span className="text-[10px] text-muted-foreground">Admin</span>
               </div>
             </button>
@@ -194,16 +209,9 @@ export function Header() {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Minha conta</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Perfil</DropdownMenuItem>
-            <DropdownMenuItem>
-              Equipe{" "}
-              <Badge variant="secondary" className="ml-auto">
-                4
-              </Badge>
+            <DropdownMenuItem onClick={handleLogout} className="text-destructive">
+              Sair
             </DropdownMenuItem>
-            <DropdownMenuItem>Faturamento</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">Sair</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

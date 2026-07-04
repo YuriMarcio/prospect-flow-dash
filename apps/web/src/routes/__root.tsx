@@ -2,7 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   createRootRouteWithContext,
+  redirect,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -42,6 +44,28 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  beforeLoad: ({ location }) => {
+    if (location.pathname === "/login") return;
+    // O cookie de sessão pertence ao domínio da API, não ao do web app, e o
+    // localStorage não existe durante o SSR — então não há como validar a
+    // sessão no servidor. Só checamos no cliente (lendo o localStorage
+    // diretamente, sem depender do timing de hidratação do Zustand) e
+    // deixamos o SSR passar; se não estiver autenticado, o próprio cliente
+    // redireciona logo após montar.
+    if (typeof window === "undefined") return;
+
+    let authenticated = false;
+    try {
+      const raw = window.localStorage.getItem("crm-auth");
+      authenticated = raw ? JSON.parse(raw)?.state?.isAuthenticated === true : false;
+    } catch {
+      authenticated = false;
+    }
+
+    if (!authenticated) {
+      throw redirect({ to: "/login" });
+    }
+  },
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -71,9 +95,12 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isLoginRoute = pathname === "/login";
+
   return (
     <QueryClientProvider client={queryClient}>
-      <AppLayout />
+      {isLoginRoute ? <Outlet /> : <AppLayout />}
       <LeadModal />
       <Toaster />
     </QueryClientProvider>

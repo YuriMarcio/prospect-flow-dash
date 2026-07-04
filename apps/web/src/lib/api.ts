@@ -1,4 +1,5 @@
 import type { Capture, Lead, LeadStatus, TimelineEvent } from "@/types";
+import { useAuthStore } from "@/store/auth";
 
 const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:3333").replace(/\/$/, "");
 
@@ -192,6 +193,7 @@ function normalizeLead(lead: ApiLead): Lead {
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const hasBody = init?.body != null;
   const response = await fetch(`${API_URL}${path}`, {
+    credentials: "include",
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
@@ -199,11 +201,33 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
 
+  if (response.status === 401 && path !== "/auth/login") {
+    useAuthStore.getState().clear();
+    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      window.location.assign("/login");
+    }
+  }
+
   if (!response.ok) {
     throw new Error(`API respondeu com erro ${response.status}`);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json();
+}
+
+export async function login(username: string, password: string): Promise<{ username: string }> {
+  return request<{ username: string }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export async function logout(): Promise<void> {
+  await request<void>("/auth/logout", { method: "POST" });
 }
 
 export async function listLeads() {
