@@ -29,9 +29,9 @@ export function Header() {
   const openLead = useLeadModalStore((s) => s.open);
   const { notifications, markRead, markAllRead, dismiss, snooze } = useNotificationsStore();
   const navigate = useNavigate();
-  const username = useAuthStore((s) => s.username);
+  const displayName = useAuthStore((s) => s.displayName);
   const clearAuth = useAuthStore((s) => s.clear);
-  const initials = (username ?? "?").slice(0, 2).toUpperCase();
+  const initials = (displayName ?? "?").slice(0, 2).toUpperCase();
 
   async function handleLogout() {
     try {
@@ -201,7 +201,7 @@ export function Header() {
                 </AvatarFallback>
               </Avatar>
               <div className="hidden sm:flex flex-col text-left leading-tight">
-                <span className="text-xs font-medium">{username ?? "—"}</span>
+                <span className="text-xs font-medium">{displayName ?? "—"}</span>
                 <span className="text-[10px] text-muted-foreground">Admin</span>
               </div>
             </button>

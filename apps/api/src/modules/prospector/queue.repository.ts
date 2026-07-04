@@ -2,6 +2,7 @@ import { getSupabase } from "../../lib/supabase";
 
 export interface DispatchQueueRow {
   id: string;
+  owner_id: string;
   lead_id: string;
   channel: string;
   message_id: string | null;
@@ -21,12 +22,13 @@ export async function insertMany(rows: Record<string, unknown>[]): Promise<void>
   if (error) throw new Error(error.message);
 }
 
-export async function findDueItems(now: string): Promise<DispatchQueueRow[]> {
+export async function findDueItems(now: string, ownerId: string): Promise<DispatchQueueRow[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("dispatch_queue")
     .select("*")
     .eq("status", "waiting")
+    .eq("owner_id", ownerId)
     .lte("scheduled_at", now)
     .order("scheduled_at", { ascending: true });
 
@@ -54,7 +56,7 @@ export async function findLeadIdsQueuedToday(): Promise<string[]> {
   return (data ?? []).map((row: { lead_id: string }) => row.lead_id);
 }
 
-export async function countToday(status?: string): Promise<number> {
+export async function countToday(ownerId: string, status?: string): Promise<number> {
   const supabase = getSupabase();
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
@@ -63,6 +65,7 @@ export async function countToday(status?: string): Promise<number> {
   let query: any = supabase
     .from("dispatch_queue")
     .select("id", { count: "exact", head: true })
+    .eq("owner_id", ownerId)
     .gte("created_at", startOfDay.toISOString());
 
   if (status) query = query.eq("status", status);
@@ -99,7 +102,7 @@ export async function findRecentResponseTexts(sinceIso: string): Promise<string[
   return (data ?? []).map((row: { response_text: string }) => row.response_text);
 }
 
-export async function findAllForToday(): Promise<DispatchQueueRow[]> {
+export async function findAllForToday(ownerId: string): Promise<DispatchQueueRow[]> {
   const supabase = getSupabase();
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
@@ -107,6 +110,7 @@ export async function findAllForToday(): Promise<DispatchQueueRow[]> {
   const { data, error } = await supabase
     .from("dispatch_queue")
     .select("*")
+    .eq("owner_id", ownerId)
     .gte("created_at", startOfDay.toISOString())
     .order("scheduled_at", { ascending: true });
 

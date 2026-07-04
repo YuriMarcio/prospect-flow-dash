@@ -29,6 +29,7 @@ const SUPPORTED_CHANNELS = ["whatsapp"];
 
 export async function connectInstanceService(
   channel: string,
+  ownerId: string,
   instanceName: string,
   numberAge: "new" | "established",
 ) {
@@ -66,6 +67,7 @@ export async function connectInstanceService(
 
   const instance = await prospectorRepository.upsertInstance(
     channel,
+    ownerId,
     instanceName,
     {
       status: "connecting",
@@ -81,9 +83,9 @@ export async function connectInstanceService(
   return { qrcode: typeof qrValue === "string" ? qrValue : null, instance };
 }
 
-export async function getStatusService() {
-  const instance = await prospectorRepository.findInstanceByChannel("whatsapp");
-  const config = await prospectorRepository.getConfig();
+export async function getStatusService(ownerId: string) {
+  const instance = await prospectorRepository.findInstanceByChannel("whatsapp", ownerId);
+  const config = await prospectorRepository.getConfig(ownerId);
 
   let connected = instance?.status === "connected";
 
@@ -109,9 +111,9 @@ export async function getStatusService() {
   const dayConfig = config.schedule[todayKey];
   const todayLimit =
     instance && dayConfig ? getEffectiveDailyLimit(instance, dayConfig) : 0;
-  const todayCount = await queueRepository.countToday("sent");
-  const queueSize = await queueRepository.countToday("waiting");
-  const activeMessage = await messagesRepository.findActive();
+  const todayCount = await queueRepository.countToday(ownerId, "sent");
+  const queueSize = await queueRepository.countToday(ownerId, "waiting");
+  const activeMessage = await messagesRepository.findActive(ownerId);
 
   return {
     connected,
@@ -128,25 +130,25 @@ export async function getStatusService() {
   };
 }
 
-export async function getConfigService() {
-  return prospectorRepository.getConfig();
+export async function getConfigService(ownerId: string) {
+  return prospectorRepository.getConfig(ownerId);
 }
 
-export async function updateConfigService(patch: Record<string, unknown>) {
-  return prospectorRepository.updateConfig(patch);
+export async function updateConfigService(ownerId: string, patch: Record<string, unknown>) {
+  return prospectorRepository.updateConfig(ownerId, patch);
 }
 
-export async function toggleService() {
-  const config = await prospectorRepository.getConfig();
-  return prospectorRepository.updateConfig({ is_active: !config.is_active });
+export async function toggleService(ownerId: string) {
+  const config = await prospectorRepository.getConfig(ownerId);
+  return prospectorRepository.updateConfig(ownerId, { is_active: !config.is_active });
 }
 
-export async function listMessagesService() {
-  return messagesRepository.findAll();
+export async function listMessagesService(ownerId: string) {
+  return messagesRepository.findAll(ownerId);
 }
 
-export async function createMessageService(data: Record<string, unknown>) {
-  return messagesRepository.create(data);
+export async function createMessageService(ownerId: string, data: Record<string, unknown>) {
+  return messagesRepository.create(ownerId, data);
 }
 
 export async function updateMessageService(
@@ -169,12 +171,12 @@ export async function uploadMediaService(input: {
   return { url };
 }
 
-export async function buildQueueService() {
-  return buildTodayQueue();
+export async function buildQueueService(ownerId: string) {
+  return buildTodayQueue(ownerId);
 }
 
-export async function listQueueService() {
-  return queueRepository.findAllForToday();
+export async function listQueueService(ownerId: string) {
+  return queueRepository.findAllForToday(ownerId);
 }
 
 export async function listLogsService() {
@@ -194,22 +196,22 @@ export async function handleWebhookService(
 // Plano semanal (arrastar lead pra um dia no "Kanban do bot")
 // ---------------------------------------------------------------------------
 
-export async function listPlanService() {
-  return planRepository.findAll();
+export async function listPlanService(ownerId: string) {
+  return planRepository.findAll(ownerId);
 }
 
-export async function assignLeadToDayService(leadId: string, date: string) {
+export async function assignLeadToDayService(leadId: string, date: string, ownerId: string) {
   const todayKey = toDateKey(new Date());
 
   if (date === todayKey) {
-    return enqueueLeadNow(leadId);
+    return enqueueLeadNow(leadId, ownerId);
   }
 
   const lead = await leadsRepository.findById(leadId);
   if (!lead?.whatsapp)
     return { ok: false, reason: "Lead sem WhatsApp cadastrado." };
 
-  await planRepository.assign(leadId, date);
+  await planRepository.assign(leadId, date, ownerId);
   return { ok: true };
 }
 

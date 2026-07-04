@@ -219,10 +219,24 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json();
 }
 
-export async function login(username: string, password: string): Promise<{ username: string }> {
-  return request<{ username: string }>("/auth/login", {
+export interface AuthUser {
+  id: string;
+  username: string | null;
+  email: string | null;
+  name: string | null;
+}
+
+export async function login(username: string, password: string): Promise<AuthUser> {
+  return request<AuthUser>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
+  });
+}
+
+export async function loginWithGoogle(credential: string): Promise<AuthUser> {
+  return request<AuthUser>("/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ credential }),
   });
 }
 

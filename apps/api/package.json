@@ -15,6 +15,7 @@
     "cheerio": "^1.2.0",
     "dotenv": "^16.4.0",
     "fastify": "^4.29.1",
+    "google-auth-library": "^10.9.0",
     "libphonenumber-js": "^1.13.6",
     "playwright": "^1.60.0",
     "playwright-extra": "^4.3.6",

@@ -14,7 +14,7 @@ import { logsRoutes } from "./modules/logs/logs.routes";
 import { workersRoutes } from "./modules/workers/workers.routes";
 import { prospectorRoutes } from "./modules/prospector/prospector.routes";
 import { runDispatchTick } from "./workers/prospector/dispatcher.worker";
-import { buildTodayQueue } from "./workers/prospector/queue-builder.worker";
+import { buildTodayQueueForAllOwners } from "./workers/prospector/queue-builder.worker";
 import { runSessionTick } from "./workers/prospector/session.worker";
 
 const app = Fastify({
@@ -25,7 +25,7 @@ const app = Fastify({
 
 // Rotas acessíveis sem sessão: health check, login, e o webhook que a
 // própria Evolution API chama de fora (não tem como mandar nosso cookie).
-const PUBLIC_PATHS = new Set(["/", "/auth/login"]);
+const PUBLIC_PATHS = new Set(["/", "/auth/login", "/auth/google"]);
 const PUBLIC_PATH_PREFIXES = ["/prospector/webhook/"];
 
 function isPublicPath(url: string): boolean {
@@ -132,7 +132,7 @@ function setupProspectorScheduler() {
 
     if (isBuildTime && lastBuildDate !== today) {
       lastBuildDate = today;
-      buildTodayQueue().catch((err) => app.log.error({ err }, "[PROSPECTOR] Falha ao construir fila diária"));
+      buildTodayQueueForAllOwners().catch((err) => app.log.error({ err }, "[PROSPECTOR] Falha ao construir fila diária"));
     }
   }, 60_000);
 }

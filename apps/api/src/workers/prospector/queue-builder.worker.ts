@@ -26,19 +26,21 @@ function parseTimeOnDate(date: Date, time: string): Date {
   return result;
 }
 
-async function pickMessage() {
-  const abMessage = await messagesRepository.findNextAbTest();
+async function pickMessage(ownerId: string) {
+  const abMessage = await messagesRepository.findNextAbTest(ownerId);
   if (abMessage) return abMessage;
-  return messagesRepository.findActive();
+  return messagesRepository.findActive(ownerId);
 }
 
 /**
- * Constrói a fila do dia. Leads colocados manualmente em "Hoje" (dispatch_plan)
- * têm prioridade total e entram sem passar pelos filtros de cidade/segmento —
- * só depois disso o restante das vagas é preenchido pela seleção automática.
+ * Constrói a fila do dia para um dono específico. Leads colocados manualmente em
+ * "Hoje" (dispatch_plan) têm prioridade total e entram sem passar pelos filtros de
+ * cidade/segmento — só depois disso o restante das vagas é preenchido pela seleção
+ * automática. A lista de leads já enfileirados hoje é GLOBAL (todos os donos), pra
+ * duas pessoas não mandarem mensagem pro mesmo lead compartilhado no mesmo dia.
  */
-export async function buildTodayQueue(): Promise<{ queued: number }> {
-  const config = await prospectorRepository.getConfig();
+export async function buildTodayQueue(ownerId: string): Promise<{ queued: number }> {
+  const config = await prospectorRepository.getConfig(ownerId);
   const today = new Date();
   const dayKey = WEEKDAY_KEYS[today.getDay()];
   const dayConfig = config.schedule[dayKey];
@@ -48,7 +50,7 @@ export async function buildTodayQueue(): Promise<{ queued: number }> {
     return { queued: 0 };
   }
 
-  const instance = await prospectorRepository.findInstanceByChannel("whatsapp");
+  const instance = await prospectorRepository.findInstanceByChannel("whatsapp", ownerId);
   if (!instance || instance.status !== "connected") {
     await botLogs.create(`Instância WhatsApp não conectada. Fila não construída.`, "warn");
     return { queued: 0 };
@@ -61,7 +63,7 @@ export async function buildTodayQueue(): Promise<{ queued: number }> {
   }
 
   const todayKey = toDateKey(today);
-  const plannedToday = await planRepository.findByDate(todayKey);
+  const plannedToday = await planRepository.findByDate(todayKey, ownerId);
   const alreadyQueuedIds = await queueRepository.findLeadIdsQueuedToday();
 
   const plannedLeads = [];
@@ -95,7 +97,7 @@ export async function buildTodayQueue(): Promise<{ queued: number }> {
     const scheduledAt = new Date(cursor + randomJitter(jitterMs));
     if (scheduledAt.getTime() > windowEnd.getTime()) break;
 
-    const message = await pickMessage();
+    const message = await pickMessage(ownerId);
     if (!message) {
       await botLogs.create(`Nenhuma mensagem ativa configurada. Pulando lead ${lead.name}.`, "warn");
       cursor += minIntervalMs;
@@ -103,6 +105,7 @@ export async function buildTodayQueue(): Promise<{ queued: number }> {
     }
 
     rows.push({
+      owner_id: ownerId,
       lead_id: lead.id,
       channel: "whatsapp",
       message_id: message.id,
@@ -123,29 +126,44 @@ export async function buildTodayQueue(): Promise<{ queued: number }> {
 }
 
 /**
+ * Roda a construção de fila pra todos os donos configurados, um de cada vez —
+ * sequencial de propósito, pra exclusão de leads já enfileirados hoje (compartilhada
+ * entre donos) refletir o que o dono anterior acabou de reservar.
+ */
+export async function buildTodayQueueForAllOwners(): Promise<{ queued: number }> {
+  const ownerIds = await prospectorRepository.listConfiguredOwnerIds();
+  let total = 0;
+  for (const ownerId of ownerIds) {
+    const result = await buildTodayQueue(ownerId);
+    total += result.queued;
+  }
+  return { queued: total };
+}
+
+/**
  * Enfileira um lead imediatamente para hoje (arraste manual na coluna "Hoje").
  * Ignora filtros de cidade/segmento e o limite diário — escolha manual tem prioridade.
  */
-export async function enqueueLeadNow(leadId: string): Promise<{ ok: boolean; reason?: string }> {
+export async function enqueueLeadNow(leadId: string, ownerId: string): Promise<{ ok: boolean; reason?: string }> {
   const lead = await leadsRepository.findById(leadId);
   if (!lead?.whatsapp) return { ok: false, reason: "Lead sem WhatsApp cadastrado." };
 
   const alreadyQueuedIds = await queueRepository.findLeadIdsQueuedToday();
   if (alreadyQueuedIds.includes(leadId)) return { ok: false, reason: "Lead já está na fila de hoje." };
 
-  const instance = await prospectorRepository.findInstanceByChannel("whatsapp");
+  const instance = await prospectorRepository.findInstanceByChannel("whatsapp", ownerId);
   if (!instance || instance.status !== "connected") {
     return { ok: false, reason: "Instância WhatsApp não conectada." };
   }
 
-  const message = await pickMessage();
+  const message = await pickMessage(ownerId);
   if (!message) return { ok: false, reason: "Nenhuma mensagem ativa configurada." };
 
-  const config = await prospectorRepository.getConfig();
+  const config = await prospectorRepository.getConfig(ownerId);
   const dayConfig = config.schedule[WEEKDAY_KEYS[new Date().getDay()]];
   const effectiveLimit = dayConfig ? getEffectiveDailyLimit(instance, dayConfig) : 0;
   const { minIntervalMs, jitterMs } = getDispatchInterval(instance, effectiveLimit);
-  const todayQueue = await queueRepository.findAllForToday();
+  const todayQueue = await queueRepository.findAllForToday(ownerId);
   const lastScheduled = todayQueue.reduce<number | null>((max, item) => {
     const t = new Date(item.scheduled_at).getTime();
     return max === null || t > max ? t : max;
@@ -157,6 +175,7 @@ export async function enqueueLeadNow(leadId: string): Promise<{ ok: boolean; rea
 
   await queueRepository.insertMany([
     {
+      owner_id: ownerId,
       lead_id: leadId,
       channel: "whatsapp",
       message_id: message.id,

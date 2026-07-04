@@ -8,24 +8,19 @@ import { checkUntilDoneCompletion } from "./session.worker";
 import { sendMessageBlocks } from "./send-blocks";
 
 export async function runDispatchTick(): Promise<void> {
-  const config = await prospectorRepository.getConfig();
-  if (!config.is_active) return;
+  const instances = await prospectorRepository.findAllConnectedInstances("whatsapp");
 
-  const dueItems = await queueRepository.findDueItems(new Date().toISOString());
+  for (const instance of instances) {
+    const config = await prospectorRepository.getConfig(instance.owner_id);
+    if (!config.is_active) continue;
 
-  if (dueItems.length > 0) {
-    const instance = await prospectorRepository.findInstanceByChannel("whatsapp");
-    if (!instance || instance.status !== "connected") {
-      await botLogs.create(`Itens na fila, mas instância WhatsApp não está conectada.`, "warn");
-      return;
-    }
-
+    const dueItems = await queueRepository.findDueItems(new Date().toISOString(), instance.owner_id);
     for (const item of dueItems) {
       await dispatchOne(item, instance.instance_name);
     }
-  }
 
-  await checkUntilDoneCompletion();
+    await checkUntilDoneCompletion(instance.owner_id);
+  }
 }
 
 async function dispatchOne(

@@ -21,6 +21,10 @@ import {
   unassignLeadService,
 } from "./prospector.service";
 
+function ownerId(request: FastifyRequest): string {
+  return (request.user as { userId: string }).userId;
+}
+
 export async function connectController(
   request: FastifyRequest<{
     Params: { channel: string };
@@ -29,17 +33,17 @@ export async function connectController(
   reply: FastifyReply,
 ) {
   const { instanceName, numberAge } = request.body;
-  const result = await connectInstanceService(request.params.channel, instanceName, numberAge);
+  const result = await connectInstanceService(request.params.channel, ownerId(request), instanceName, numberAge);
   return reply.status(201).send(result);
 }
 
-export async function statusController(_request: FastifyRequest, reply: FastifyReply) {
-  const result = await getStatusService();
+export async function statusController(request: FastifyRequest, reply: FastifyReply) {
+  const result = await getStatusService(ownerId(request));
   return reply.send(result);
 }
 
-export async function getConfigController(_request: FastifyRequest, reply: FastifyReply) {
-  const result = await getConfigService();
+export async function getConfigController(request: FastifyRequest, reply: FastifyReply) {
+  const result = await getConfigService(ownerId(request));
   return reply.send(result);
 }
 
@@ -47,17 +51,17 @@ export async function updateConfigController(
   request: FastifyRequest<{ Body: Record<string, unknown> }>,
   reply: FastifyReply,
 ) {
-  const result = await updateConfigService(request.body);
+  const result = await updateConfigService(ownerId(request), request.body);
   return reply.send(result);
 }
 
-export async function toggleController(_request: FastifyRequest, reply: FastifyReply) {
-  const result = await toggleService();
+export async function toggleController(request: FastifyRequest, reply: FastifyReply) {
+  const result = await toggleService(ownerId(request));
   return reply.send(result);
 }
 
-export async function listMessagesController(_request: FastifyRequest, reply: FastifyReply) {
-  const result = await listMessagesService();
+export async function listMessagesController(request: FastifyRequest, reply: FastifyReply) {
+  const result = await listMessagesService(ownerId(request));
   return reply.send(result);
 }
 
@@ -65,7 +69,7 @@ export async function createMessageController(
   request: FastifyRequest<{ Body: Record<string, unknown> }>,
   reply: FastifyReply,
 ) {
-  const result = await createMessageService(request.body);
+  const result = await createMessageService(ownerId(request), request.body);
   return reply.status(201).send(result);
 }
 
@@ -93,13 +97,13 @@ export async function uploadMediaController(
   return reply.status(201).send(result);
 }
 
-export async function buildQueueController(_request: FastifyRequest, reply: FastifyReply) {
-  const result = await buildQueueService();
+export async function buildQueueController(request: FastifyRequest, reply: FastifyReply) {
+  const result = await buildQueueService(ownerId(request));
   return reply.status(201).send(result);
 }
 
-export async function listQueueController(_request: FastifyRequest, reply: FastifyReply) {
-  const result = await listQueueService();
+export async function listQueueController(request: FastifyRequest, reply: FastifyReply) {
+  const result = await listQueueService(ownerId(request));
   return reply.send(result);
 }
 
@@ -112,17 +116,17 @@ export async function startSessionController(
   request: FastifyRequest<{ Body: { mode: "until_done" | "custom"; startAt?: string; endAt?: string } }>,
   reply: FastifyReply,
 ) {
-  const result = await startSessionService(request.body);
+  const result = await startSessionService(ownerId(request), request.body);
   return reply.send(result);
 }
 
-export async function stopSessionController(_request: FastifyRequest, reply: FastifyReply) {
-  const result = await stopSessionService();
+export async function stopSessionController(request: FastifyRequest, reply: FastifyReply) {
+  const result = await stopSessionService(ownerId(request));
   return reply.send(result);
 }
 
-export async function listPlanController(_request: FastifyRequest, reply: FastifyReply) {
-  const result = await listPlanService();
+export async function listPlanController(request: FastifyRequest, reply: FastifyReply) {
+  const result = await listPlanService(ownerId(request));
   return reply.send(result);
 }
 
@@ -130,7 +134,7 @@ export async function assignPlanController(
   request: FastifyRequest<{ Body: { leadId: string; date: string } }>,
   reply: FastifyReply,
 ) {
-  const result = await assignLeadToDayService(request.body.leadId, request.body.date);
+  const result = await assignLeadToDayService(request.body.leadId, request.body.date, ownerId(request));
   return reply.status(201).send(result);
 }
 

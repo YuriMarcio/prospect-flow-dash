@@ -4,17 +4,16 @@ import * as botLogs from "../../modules/prospector/botlogs.repository";
 
 export type SessionMode = "until_done" | "custom";
 
-export async function startSessionService(input: {
-  mode: SessionMode;
-  startAt?: string;
-  endAt?: string;
-}) {
+export async function startSessionService(
+  ownerId: string,
+  input: { mode: SessionMode; startAt?: string; endAt?: string },
+) {
   const startAt = input.mode === "custom" && input.startAt ? input.startAt : new Date().toISOString();
   const endAt = input.mode === "custom" ? input.endAt ?? null : null;
 
   const isStartingNow = new Date(startAt).getTime() <= Date.now();
 
-  const config = await prospectorRepository.updateConfig({
+  const config = await prospectorRepository.updateConfig(ownerId, {
     session_mode: input.mode,
     session_start_at: startAt,
     session_end_at: endAt,
@@ -30,8 +29,8 @@ export async function startSessionService(input: {
   return config;
 }
 
-export async function stopSessionService() {
-  const config = await prospectorRepository.updateConfig({
+export async function stopSessionService(ownerId: string) {
+  const config = await prospectorRepository.updateConfig(ownerId, {
     is_active: false,
     session_mode: null,
     session_start_at: null,
@@ -42,40 +41,45 @@ export async function stopSessionService() {
 }
 
 /**
- * Roda a cada 60s junto com o dispatcher: liga o bot quando bate o
- * session_start_at agendado, e desliga quando bate o session_end_at (modo custom).
+ * Roda a cada 60s junto com o dispatcher, pra cada dono configurado: liga o bot
+ * quando bate o session_start_at agendado, e desliga quando bate o session_end_at
+ * (modo custom).
  */
 export async function runSessionTick(): Promise<void> {
-  const config = await prospectorRepository.getConfig();
-  if (!config.session_mode) return;
+  const ownerIds = await prospectorRepository.listConfiguredOwnerIds();
 
-  const now = Date.now();
+  for (const ownerId of ownerIds) {
+    const config = await prospectorRepository.getConfig(ownerId);
+    if (!config.session_mode) continue;
 
-  if (!config.is_active && config.session_start_at && new Date(config.session_start_at).getTime() <= now) {
-    await prospectorRepository.updateConfig({ is_active: true });
-    await botLogs.create(`Bot ativado (horário agendado atingido).`);
-    return;
-  }
+    const now = Date.now();
 
-  if (config.session_mode === "custom" && config.session_end_at && new Date(config.session_end_at).getTime() <= now) {
-    await stopSessionService();
-    await botLogs.create(`Bot pausado automaticamente: horário final da sessão atingido.`);
+    if (!config.is_active && config.session_start_at && new Date(config.session_start_at).getTime() <= now) {
+      await prospectorRepository.updateConfig(ownerId, { is_active: true });
+      await botLogs.create(`Bot ativado (horário agendado atingido).`);
+      continue;
+    }
+
+    if (config.session_mode === "custom" && config.session_end_at && new Date(config.session_end_at).getTime() <= now) {
+      await stopSessionService(ownerId);
+      await botLogs.create(`Bot pausado automaticamente: horário final da sessão atingido.`);
+    }
   }
 }
 
 /**
- * Chamado pelo dispatcher após cada tick: se a sessão é "até terminar a fila
- * de hoje" e não há mais nada esperando, pausa o bot sozinho.
+ * Chamado pelo dispatcher após cada tick de um dono: se a sessão é "até terminar a
+ * fila de hoje" e não há mais nada esperando, pausa o bot sozinho.
  */
-export async function checkUntilDoneCompletion(): Promise<void> {
-  const config = await prospectorRepository.getConfig();
+export async function checkUntilDoneCompletion(ownerId: string): Promise<void> {
+  const config = await prospectorRepository.getConfig(ownerId);
   if (config.session_mode !== "until_done" || !config.is_active) return;
 
-  const remaining = await queueRepository.countToday("waiting");
-  const sentSoFar = await queueRepository.countToday("sent");
+  const remaining = await queueRepository.countToday(ownerId, "waiting");
+  const sentSoFar = await queueRepository.countToday(ownerId, "sent");
 
   if (remaining === 0 && sentSoFar > 0) {
-    await stopSessionService();
+    await stopSessionService(ownerId);
     await botLogs.create(`Bot pausado automaticamente: fila de hoje concluída.`);
   }
 }

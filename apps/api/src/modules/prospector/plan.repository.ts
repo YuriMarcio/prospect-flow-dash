@@ -2,30 +2,35 @@ import { getSupabase } from "../../lib/supabase";
 
 export interface DispatchPlanRow {
   id: string;
+  owner_id: string;
   lead_id: string;
   planned_date: string;
   created_at: string;
 }
 
-export async function findAll(): Promise<DispatchPlanRow[]> {
+export async function findAll(ownerId: string): Promise<DispatchPlanRow[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase.from("dispatch_plan").select("*");
+  const { data, error } = await supabase.from("dispatch_plan").select("*").eq("owner_id", ownerId);
   if (error) throw new Error(error.message);
   return data;
 }
 
-export async function findByDate(date: string): Promise<DispatchPlanRow[]> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase.from("dispatch_plan").select("*").eq("planned_date", date);
-  if (error) throw new Error(error.message);
-  return data;
-}
-
-export async function assign(leadId: string, date: string): Promise<DispatchPlanRow> {
+export async function findByDate(date: string, ownerId: string): Promise<DispatchPlanRow[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("dispatch_plan")
-    .upsert([{ lead_id: leadId, planned_date: date }], { onConflict: "lead_id" })
+    .select("*")
+    .eq("planned_date", date)
+    .eq("owner_id", ownerId);
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function assign(leadId: string, date: string, ownerId: string): Promise<DispatchPlanRow> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("dispatch_plan")
+    .upsert([{ lead_id: leadId, planned_date: date, owner_id: ownerId }], { onConflict: "lead_id" })
     .select()
     .single();
 

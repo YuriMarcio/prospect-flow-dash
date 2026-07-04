@@ -8,6 +8,7 @@ import { classifyResponse } from "./classifier";
 import { sendMessageBlocks } from "./send-blocks";
 
 interface InboundMessage {
+  instanceName: string | null;
   fromMe: boolean;
   phone: string;
   text: string;
@@ -24,6 +25,7 @@ function parseInboundMessage(payload: Record<string, unknown>): InboundMessage |
   const key = (data.key ?? {}) as Record<string, unknown>;
   const message = (data.message ?? {}) as Record<string, unknown>;
 
+  const instanceName = typeof payload.instance === "string" ? payload.instance : null;
   const fromMe = Boolean(key.fromMe);
   const remoteJid = typeof key.remoteJid === "string" ? key.remoteJid : "";
   const phone = remoteJid.split("@")[0] ?? "";
@@ -39,7 +41,7 @@ function parseInboundMessage(payload: Record<string, unknown>): InboundMessage |
   const receivedAt =
     typeof messageTimestamp === "number" ? messageTimestamp * 1000 : Date.now();
 
-  return { fromMe, phone, text, receivedAt };
+  return { instanceName, fromMe, phone, text, receivedAt };
 }
 
 export async function handleWhatsappWebhook(payload: Record<string, unknown>): Promise<void> {
@@ -51,6 +53,17 @@ export async function handleWhatsappWebhook(payload: Record<string, unknown>): P
   }
 
   if (inbound.fromMe) return;
+
+  if (!inbound.instanceName) {
+    await botLogs.create(`Webhook sem identificação de instância. Ignorado: ${JSON.stringify(payload).slice(0, 500)}`, "warn");
+    return;
+  }
+
+  const instance = await prospectorRepository.findInstanceByName(inbound.instanceName);
+  if (!instance) {
+    await botLogs.create(`Webhook de instância desconhecida "${inbound.instanceName}". Ignorado.`, "warn");
+    return;
+  }
 
   const lead = await leadsRepository.findByWhatsapp(inbound.phone);
   if (!lead) return;
@@ -81,15 +94,17 @@ export async function handleWhatsappWebhook(payload: Record<string, unknown>): P
   await leadsRepository.update(lead.id, { status: "negociacao", column_id: "col-3" });
   await botLogs.create(`Resposta de ${lead.name} classificada como ${classification.toUpperCase()}. Lead movido para Negociação.`, "info");
 
-  await sendChainedReplyIfConfigured(lead, lastSent, inbound.phone);
+  await sendChainedReplyIfConfigured(lead, lastSent, inbound.phone, instance);
 }
 
 async function sendChainedReplyIfConfigured(
   lead: { id: string; name: string; whatsapp: string | null },
   lastSent: { message_id: string | null },
   digitsOnly: string,
+  instance: { instance_name: string; owner_id: string; status: string },
 ): Promise<void> {
   if (!lastSent.message_id) return;
+  if (instance.status !== "connected") return;
 
   const originalMessage = await messagesRepository.findById(lastSent.message_id);
   if (!originalMessage?.reply_message_id) return;
@@ -97,14 +112,12 @@ async function sendChainedReplyIfConfigured(
   const replyMessage = await messagesRepository.findById(originalMessage.reply_message_id);
   if (!replyMessage) return;
 
-  const instance = await prospectorRepository.findInstanceByChannel("whatsapp");
-  if (!instance || instance.status !== "connected") return;
-
   const client = getEvolutionClient();
   await sendMessageBlocks(client, instance.instance_name, digitsOnly, replyMessage.bot_message_blocks);
 
   await queueRepository.insertMany([
     {
+      owner_id: instance.owner_id,
       lead_id: lead.id,
       channel: "whatsapp",
       message_id: replyMessage.id,

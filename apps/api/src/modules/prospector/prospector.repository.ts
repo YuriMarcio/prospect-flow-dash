@@ -2,6 +2,7 @@ import { getSupabase } from "../../lib/supabase";
 
 export interface BotInstanceRow {
   id: string;
+  owner_id: string;
   channel: string;
   instance_name: string;
   status: string;
@@ -15,6 +16,7 @@ export interface BotInstanceRow {
 
 export interface BotConfigRow {
   id: string;
+  owner_id: string;
   schedule: Record<string, { enabled: boolean; limit: number }>;
   filters: { cities: string[]; segments: string[] };
   window_start: string;
@@ -28,25 +30,69 @@ export interface BotConfigRow {
   updated_at: string;
 }
 
-export async function findInstanceByChannel(channel: string): Promise<BotInstanceRow | null> {
+const DEFAULT_CONFIG = {
+  schedule: {
+    dom: { enabled: false, limit: 0 },
+    seg: { enabled: true, limit: 80 },
+    ter: { enabled: true, limit: 80 },
+    qua: { enabled: true, limit: 80 },
+    qui: { enabled: true, limit: 80 },
+    sex: { enabled: true, limit: 80 },
+    sab: { enabled: false, limit: 0 },
+  },
+  filters: { cities: [], segments: [] },
+  window_start: "08:00",
+  window_end: "18:00",
+  min_interval_ms: 900_000,
+  jitter_ms: 180_000,
+  is_active: false,
+};
+
+export async function findInstanceByChannel(channel: string, ownerId: string): Promise<BotInstanceRow | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("bot_instances")
     .select("*")
     .eq("channel", channel)
+    .eq("owner_id", ownerId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
   return data;
 }
 
+export async function findInstanceByName(instanceName: string): Promise<BotInstanceRow | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("bot_instances")
+    .select("*")
+    .eq("instance_name", instanceName)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function findAllConnectedInstances(channel: string): Promise<BotInstanceRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("bot_instances")
+    .select("*")
+    .eq("channel", channel)
+    .eq("status", "connected");
+
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
 export async function upsertInstance(
   channel: string,
+  ownerId: string,
   instanceName: string,
   patch: Record<string, unknown>,
 ): Promise<BotInstanceRow> {
   const supabase = getSupabase();
-  const existing = await findInstanceByChannel(channel);
+  const existing = await findInstanceByChannel(channel, ownerId);
 
   if (existing) {
     const { data, error } = await supabase
@@ -62,7 +108,7 @@ export async function upsertInstance(
 
   const { data, error } = await supabase
     .from("bot_instances")
-    .insert([{ channel, instance_name: instanceName, ...patch }])
+    .insert([{ channel, owner_id: ownerId, instance_name: instanceName, ...patch }])
     .select()
     .single();
 
@@ -86,21 +132,37 @@ export async function updateInstance(
   return data;
 }
 
-export async function getConfig(): Promise<BotConfigRow> {
+export async function listConfiguredOwnerIds(): Promise<string[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("bot_config").select("owner_id");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row: { owner_id: string }) => row.owner_id);
+}
+
+export async function getConfig(ownerId: string): Promise<BotConfigRow> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("bot_config")
     .select("*")
-    .limit(1)
-    .single();
+    .eq("owner_id", ownerId)
+    .maybeSingle();
 
   if (error) throw new Error(error.message);
-  return data;
+  if (data) return data;
+
+  const { data: created, error: insertError } = await supabase
+    .from("bot_config")
+    .insert([{ ...DEFAULT_CONFIG, owner_id: ownerId }])
+    .select()
+    .single();
+
+  if (insertError) throw new Error(insertError.message);
+  return created;
 }
 
-export async function updateConfig(patch: Record<string, unknown>): Promise<BotConfigRow> {
+export async function updateConfig(ownerId: string, patch: Record<string, unknown>): Promise<BotConfigRow> {
   const supabase = getSupabase();
-  const config = await getConfig();
+  const config = await getConfig(ownerId);
   const { data, error } = await supabase
     .from("bot_config")
     .update({ ...patch, updated_at: new Date().toISOString() })

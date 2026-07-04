@@ -11,6 +11,7 @@ export interface BotMessageBlockRow {
 
 export interface BotMessageRow {
   id: string;
+  owner_id: string;
   title: string;
   status: "active" | "draft" | "ab-test";
   ab_limit: number | null;
@@ -29,11 +30,12 @@ function sortBlocks(message: BotMessageRow): BotMessageRow {
   };
 }
 
-export async function findAll(): Promise<BotMessageRow[]> {
+export async function findAll(ownerId: string): Promise<BotMessageRow[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("bot_messages")
     .select(SELECT_WITH_BLOCKS)
+    .eq("owner_id", ownerId)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -51,24 +53,26 @@ export async function findById(id: string): Promise<BotMessageRow | null> {
   return data ? sortBlocks(data) : null;
 }
 
-export async function findActive(): Promise<BotMessageRow | null> {
+export async function findActive(ownerId: string): Promise<BotMessageRow | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("bot_messages")
     .select(SELECT_WITH_BLOCKS)
     .eq("status", "active")
+    .eq("owner_id", ownerId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
   return data ? sortBlocks(data) : null;
 }
 
-export async function findNextAbTest(): Promise<BotMessageRow | null> {
+export async function findNextAbTest(ownerId: string): Promise<BotMessageRow | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("bot_messages")
     .select(SELECT_WITH_BLOCKS)
     .eq("status", "ab-test")
+    .eq("owner_id", ownerId)
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
@@ -97,20 +101,20 @@ async function replaceBlocks(
   if (error) throw new Error(error.message);
 }
 
-export async function create(data: Record<string, unknown>): Promise<BotMessageRow> {
+export async function create(ownerId: string, data: Record<string, unknown>): Promise<BotMessageRow> {
   const supabase = getSupabase();
   const { blocks, ...messageData } = data as {
     blocks?: Array<{ type: string; content: string; caption?: string | null }>;
   } & Record<string, unknown>;
 
-  // Garante que só exista 1 mensagem "active" por vez
+  // Garante que só exista 1 mensagem "active" por vez, por dono
   if (messageData.status === "active") {
-    await supabase.from("bot_messages").update({ status: "draft" }).eq("status", "active");
+    await supabase.from("bot_messages").update({ status: "draft" }).eq("status", "active").eq("owner_id", ownerId);
   }
 
   const { data: message, error } = await supabase
     .from("bot_messages")
-    .insert([messageData])
+    .insert([{ ...messageData, owner_id: ownerId }])
     .select()
     .single();
 
@@ -128,7 +132,14 @@ export async function update(id: string, patch: Record<string, unknown>): Promis
   } & Record<string, unknown>;
 
   if (messagePatch.status === "active") {
-    await supabase.from("bot_messages").update({ status: "draft" }).eq("status", "active");
+    const current = await findById(id);
+    if (current) {
+      await supabase
+        .from("bot_messages")
+        .update({ status: "draft" })
+        .eq("status", "active")
+        .eq("owner_id", current.owner_id);
+    }
   }
 
   if (Object.keys(messagePatch).length > 0) {
