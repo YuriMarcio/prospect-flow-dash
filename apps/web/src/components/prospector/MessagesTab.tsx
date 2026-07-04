@@ -274,17 +274,20 @@ function MessageForm({
   );
 }
 
-export function MessagesTab() {
+export function MessagesTab({ campaignId }: { campaignId: string }) {
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const messagesQuery = useQuery({ queryKey: ["bot-messages"], queryFn: listBotMessages });
+  const messagesQuery = useQuery({
+    queryKey: ["bot-messages", campaignId],
+    queryFn: () => listBotMessages(campaignId),
+  });
   const messages = messagesQuery.data ?? [];
 
   function invalidate() {
-    queryClient.invalidateQueries({ queryKey: ["bot-messages"] });
-    queryClient.invalidateQueries({ queryKey: ["bot-status"] });
+    queryClient.invalidateQueries({ queryKey: ["bot-messages", campaignId] });
+    queryClient.invalidateQueries({ queryKey: ["campaign-status", campaignId] });
   }
 
   const selectMutation = useMutation({
@@ -304,7 +307,7 @@ export function MessagesTab() {
   });
 
   const createMutation = useMutation({
-    mutationFn: createBotMessage,
+    mutationFn: (input: Parameters<typeof createBotMessage>[1]) => createBotMessage(campaignId, input),
     onSuccess: () => {
       invalidate();
       setCreating(false);

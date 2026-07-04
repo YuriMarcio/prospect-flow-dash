@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-  getBotConfig,
+  getCampaign,
   listDispatchPlan,
   assignLeadToDay,
   unassignLeadFromDay,
@@ -113,19 +113,21 @@ function DroppableColumn({
 }
 
 export function BotWeekBoard({
+  campaignId,
   leads,
   botDispatchByLeadId,
 }: {
+  campaignId: string;
   leads: Lead[];
   botDispatchByLeadId: Record<string, BotDispatchInfo>;
 }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
 
-  const configQuery = useQuery({ queryKey: ["bot-config"], queryFn: getBotConfig });
+  const configQuery = useQuery({ queryKey: ["campaign", campaignId], queryFn: () => getCampaign(campaignId) });
   const planQuery = useQuery({
-    queryKey: ["bot-plan"],
-    queryFn: listDispatchPlan,
+    queryKey: ["bot-plan", campaignId],
+    queryFn: () => listDispatchPlan(campaignId),
     refetchInterval: 8000,
   });
 
@@ -188,23 +190,23 @@ export function BotWeekBoard({
   }
 
   const assignMutation = useMutation({
-    mutationFn: assignLeadToDay,
+    mutationFn: (input: { leadId: string; date: string }) => assignLeadToDay({ ...input, campaignId }),
     onSuccess: (result, variables) => {
       if (!result.ok) {
         toast.error(result.reason ?? "Não foi possível adicionar o lead.");
       } else {
         toast.success(variables.date === todayKey ? "Adicionado à fila de hoje." : "Planejado.");
       }
-      queryClient.invalidateQueries({ queryKey: ["bot-plan"] });
-      queryClient.invalidateQueries({ queryKey: ["bot-queue"] });
-      queryClient.invalidateQueries({ queryKey: ["bot-status"] });
+      queryClient.invalidateQueries({ queryKey: ["bot-plan", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["bot-queue", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-status", campaignId] });
     },
     onError: () => toast.error("Não foi possível adicionar o lead."),
   });
 
   const unassignMutation = useMutation({
     mutationFn: unassignLeadFromDay,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bot-plan"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bot-plan", campaignId] }),
   });
 
   const distributeMutation = useMutation({
@@ -222,7 +224,7 @@ export function BotWeekBoard({
       }
 
       for (const assignment of assignments) {
-        await assignLeadToDay(assignment);
+        await assignLeadToDay({ ...assignment, campaignId });
       }
       return { assigned: assignments.length, leftover: remainingPool.length };
     },
@@ -238,9 +240,9 @@ export function BotWeekBoard({
             : `${assigned} leads distribuídos pela semana.`,
         );
       }
-      queryClient.invalidateQueries({ queryKey: ["bot-plan"] });
-      queryClient.invalidateQueries({ queryKey: ["bot-queue"] });
-      queryClient.invalidateQueries({ queryKey: ["bot-status"] });
+      queryClient.invalidateQueries({ queryKey: ["bot-plan", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["bot-queue", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-status", campaignId] });
     },
     onError: () => toast.error("Não foi possível distribuir os leads."),
   });

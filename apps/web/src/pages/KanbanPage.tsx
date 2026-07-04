@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -33,8 +33,9 @@ import { BotMetricsStrip } from "@/components/prospector/BotMetricsStrip";
 import { ConnectQrDialog } from "@/components/prospector/ConnectQrDialog";
 import { BotConfigModal } from "@/components/prospector/BotConfigModal";
 import { deduplicateLeads, getStatusForColumn, updateLead as updateLeadApi } from "@/lib/api";
-import { getBotStatus, listDispatchQueue } from "@/lib/prospector";
+import { getCampaignStatus, listCampaigns, listDispatchQueue, type ProspectingCampaign } from "@/lib/prospector";
 import { BotWeekBoard } from "@/components/prospector/BotWeekBoard";
+import { NewCampaignModal } from "@/components/prospector/NewCampaignModal";
 import { useLeadsSync } from "@/hooks/use-leads-sync";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,7 +111,8 @@ export function KanbanPage() {
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
-  const [boardView, setBoardView] = useState<"geral" | "bot">("geral");
+  const [boardView, setBoardView] = useState<string>("geral");
+  const [newCampaignOpen, setNewCampaignOpen] = useState(false);
 
   // Estado do formulário de reunião
   const [meetingDate, setMeetingDate] = useState("");
@@ -121,26 +123,39 @@ export function KanbanPage() {
   const leadsQuery = useLeadsSync();
   const queryClient = useQueryClient();
 
-  const botStatusQuery = useQuery({
-    queryKey: ["bot-status"],
-    queryFn: getBotStatus,
+  const campaignsQuery = useQuery({ queryKey: ["campaigns"], queryFn: listCampaigns });
+  const campaigns = campaignsQuery.data ?? [];
+  const activeCampaign = campaigns.find((c) => c.id === boardView);
+
+  // Se a campanha selecionada for excluída/desaparecer, volta pro Kanban geral.
+  useEffect(() => {
+    if (boardView !== "geral" && campaignsQuery.data && !activeCampaign) {
+      setBoardView("geral");
+    }
+  }, [boardView, campaignsQuery.data, activeCampaign]);
+
+  const campaignStatusQuery = useQuery({
+    queryKey: ["campaign-status", activeCampaign?.id],
+    queryFn: () => getCampaignStatus(activeCampaign!.id),
+    enabled: Boolean(activeCampaign),
     refetchInterval: 5000,
   });
 
-  const botQueueQuery = useQuery({
-    queryKey: ["bot-queue"],
-    queryFn: listDispatchQueue,
+  const campaignQueueQuery = useQuery({
+    queryKey: ["bot-queue", activeCampaign?.id],
+    queryFn: () => listDispatchQueue(activeCampaign!.id),
+    enabled: Boolean(activeCampaign),
     refetchInterval: 5000,
   });
 
   const botDispatchByLeadId = useMemo(() => {
     const map: Record<string, BotDispatchInfo> = {};
-    for (const item of botQueueQuery.data ?? []) {
+    for (const item of campaignQueueQuery.data ?? []) {
       if (item.status === "failed") continue;
       map[item.lead_id] = { status: item.status, sentAt: item.sent_at };
     }
     return map;
-  }, [botQueueQuery.data]);
+  }, [campaignQueueQuery.data]);
 
   const dedupMutation = useMutation({
     mutationFn: deduplicateLeads,
@@ -292,45 +307,73 @@ export function KanbanPage() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden p-6 gap-4 animate-fade-in">
-      {/* Header do bot de disparos */}
-      <BotStatusHeader
-        status={botStatusQuery.data}
-        onConfigure={() => setConfigOpen(true)}
-        onConnect={() => setConnectOpen(true)}
-      />
-      <BotMetricsStrip status={botStatusQuery.data} />
+      {/* Abas: Kanban geral (fixa) + uma por campanha de prospecção + Nova campanha */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-1 w-fit">
+          <button
+            onClick={() => setBoardView("geral")}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              boardView === "geral"
+                ? "bg-background shadow-sm text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Kanban geral
+          </button>
+          {campaigns.map((campaign) => (
+            <button
+              key={campaign.id}
+              onClick={() => setBoardView(campaign.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                boardView === campaign.id
+                  ? "bg-background shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  campaign.is_active ? "bg-green-500 animate-pulse" : "bg-muted-foreground/50"
+                }`}
+              />
+              {campaign.name}
+            </button>
+          ))}
+        </div>
 
-      {/* Toggle de visualização */}
-      <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-1 w-fit">
-        <button
-          onClick={() => setBoardView("geral")}
-          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            boardView === "geral"
-              ? "bg-background shadow-sm text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Kanban geral
-        </button>
-        <button
-          onClick={() => setBoardView("bot")}
-          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            boardView === "bot"
-              ? "bg-background shadow-sm text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Kanban do bot
-        </button>
+        <Button variant="outline" size="sm" onClick={() => setNewCampaignOpen(true)}>
+          <Plus className="h-3.5 w-3.5" />
+          Nova campanha
+        </Button>
       </div>
 
-      {boardView === "bot" ? (
-        <BotWeekBoard leads={leads} botDispatchByLeadId={botDispatchByLeadId} />
+      {activeCampaign ? (
+        <div className="flex flex-col gap-4 flex-1 min-h-0">
+          <BotStatusHeader
+            campaignId={activeCampaign.id}
+            campaignName={activeCampaign.name}
+            status={campaignStatusQuery.data}
+            onConfigure={() => setConfigOpen(true)}
+            onConnect={() => setConnectOpen(true)}
+          />
+          <BotMetricsStrip status={campaignStatusQuery.data} />
+          <BotWeekBoard
+            campaignId={activeCampaign.id}
+            leads={leads}
+            botDispatchByLeadId={botDispatchByLeadId}
+          />
+
+          <ConnectQrDialog open={connectOpen} onOpenChange={setConnectOpen} />
+          <BotConfigModal campaignId={activeCampaign.id} open={configOpen} onOpenChange={setConfigOpen} />
+        </div>
       ) : (
         <>
           {/* Header */}
           <div className="flex items-start justify-between flex-wrap gap-3">
             <div>
+              <h1 className="text-2xl font-semibold tracking-tight">Pipeline comercial</h1>
+              <p className="text-sm text-muted-foreground">
+                Arraste leads entre colunas · dados compartilhados entre todos
+              </p>
               {leadsQuery.isError && (
                 <p className="text-sm text-destructive mt-1">
                   Não foi possível carregar os leads da API.
@@ -613,8 +656,11 @@ export function KanbanPage() {
         </DialogContent>
       </Dialog>
 
-      <ConnectQrDialog open={connectOpen} onOpenChange={setConnectOpen} />
-      <BotConfigModal open={configOpen} onOpenChange={setConfigOpen} />
+      <NewCampaignModal
+        open={newCampaignOpen}
+        onOpenChange={setNewCampaignOpen}
+        onCreated={(campaign) => setBoardView(campaign.id)}
+      />
     </div>
   );
 }

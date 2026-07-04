@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { startBotSession } from "@/lib/prospector";
+import { startCampaignSession } from "@/lib/prospector";
 
 function defaultTime(offsetMinutes = 0): string {
   const d = new Date(Date.now() + offsetMinutes * 60_000);
@@ -19,9 +19,11 @@ function defaultTime(offsetMinutes = 0): string {
 }
 
 export function StartSessionDialog({
+  campaignId,
   open,
   onOpenChange,
 }: {
+  campaignId: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
@@ -32,7 +34,7 @@ export function StartSessionDialog({
 
   const mutation = useMutation({
     mutationFn: () => {
-      if (mode === "until_done") return startBotSession({ mode });
+      if (mode === "until_done") return startCampaignSession(campaignId, { mode });
 
       const now = new Date();
       const toIso = (time: string) => {
@@ -42,10 +44,10 @@ export function StartSessionDialog({
         return d.toISOString();
       };
 
-      return startBotSession({ mode, startAt: toIso(startTime), endAt: toIso(endTime) });
+      return startCampaignSession(campaignId, { mode, startAt: toIso(startTime), endAt: toIso(endTime) });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bot-status"] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-status", campaignId] });
       onOpenChange(false);
     },
   });

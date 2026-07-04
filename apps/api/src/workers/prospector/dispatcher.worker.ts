@@ -1,25 +1,22 @@
 import { getEvolutionClient } from "../../lib/evolution";
-import * as prospectorRepository from "../../modules/prospector/prospector.repository";
 import * as messagesRepository from "../../modules/prospector/messages.repository";
 import * as queueRepository from "../../modules/prospector/queue.repository";
 import * as botLogs from "../../modules/prospector/botlogs.repository";
 import * as leadsRepository from "../../modules/leads/leads.repository";
+import * as campaignsRepository from "../../modules/prospecting-campaigns/prospecting-campaigns.repository";
 import { checkUntilDoneCompletion } from "./session.worker";
 import { sendMessageBlocks } from "./send-blocks";
 
 export async function runDispatchTick(): Promise<void> {
-  const instances = await prospectorRepository.findAllConnectedInstances("whatsapp");
+  const campaigns = await campaignsRepository.findActiveWithConnectedInstance();
 
-  for (const instance of instances) {
-    const config = await prospectorRepository.getConfig(instance.owner_id);
-    if (!config.is_active) continue;
-
-    const dueItems = await queueRepository.findDueItems(new Date().toISOString(), instance.owner_id);
+  for (const campaign of campaigns) {
+    const dueItems = await queueRepository.findDueItems(new Date().toISOString(), campaign.id);
     for (const item of dueItems) {
-      await dispatchOne(item, instance.instance_name);
+      await dispatchOne(item, campaign.instance_name);
     }
 
-    await checkUntilDoneCompletion(instance.owner_id);
+    await checkUntilDoneCompletion(campaign.id);
   }
 }
 

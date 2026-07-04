@@ -70,6 +70,7 @@ export async function findProspectingCandidates(
     .from("leads")
     .select("id, name, whatsapp, city, category")
     .eq("status", "novo")
+    .is("prospecting_campaign_id", null)
     .not("whatsapp", "is", null)
     .order("created_at", { ascending: true });
 
@@ -103,6 +104,38 @@ export async function findProspectingCandidates(
       return false;
     return true;
   });
+}
+
+/**
+ * Reivindica um lead pra uma campanha, só se ele ainda não pertencer a nenhuma
+ * (update condicional atômico — evita corrida entre duas campanhas pegando o
+ * mesmo lead compartilhado ao mesmo tempo). Retorna false se já estava
+ * reivindicado por outra campanha.
+ */
+export async function claimForCampaign(leadId: string, campaignId: string): Promise<boolean> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ prospecting_campaign_id: campaignId })
+    .eq("id", leadId)
+    .is("prospecting_campaign_id", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
+export async function findCampaignIdForLead(leadId: string): Promise<string | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("leads")
+    .select("prospecting_campaign_id")
+    .eq("id", leadId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data?.prospecting_campaign_id ?? null;
 }
 
 export async function existsByNameAndCity(

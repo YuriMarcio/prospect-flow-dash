@@ -233,6 +233,10 @@ export async function login(username: string, password: string): Promise<AuthUse
   });
 }
 
+export async function listUsers(): Promise<AuthUser[]> {
+  return request<AuthUser[]>("/auth/users");
+}
+
 export async function loginWithGoogle(credential: string): Promise<AuthUser> {
   return request<AuthUser>("/auth/google", {
     method: "POST",

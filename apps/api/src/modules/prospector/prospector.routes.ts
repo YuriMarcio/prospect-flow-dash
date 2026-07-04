@@ -1,12 +1,7 @@
 import { FastifyInstance } from "fastify";
 import {
   connectController,
-  statusController,
-  getConfigController,
-  updateConfigController,
-  toggleController,
-  startSessionController,
-  stopSessionController,
+  instanceStatusController,
   listMessagesController,
   createMessageController,
   updateMessageController,
@@ -23,12 +18,7 @@ import {
 
 export async function prospectorRoutes(app: FastifyInstance) {
   app.post("/connect/:channel", connectController);
-  app.get("/status", statusController);
-  app.get("/config", getConfigController);
-  app.put("/config", updateConfigController);
-  app.post("/toggle", toggleController);
-  app.post("/session/start", startSessionController);
-  app.post("/session/stop", stopSessionController);
+  app.get("/instance-status", instanceStatusController);
 
   app.get("/messages", listMessagesController);
   app.post("/messages", createMessageController);

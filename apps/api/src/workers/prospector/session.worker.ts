@@ -1,11 +1,11 @@
-import * as prospectorRepository from "../../modules/prospector/prospector.repository";
+import * as campaignsRepository from "../../modules/prospecting-campaigns/prospecting-campaigns.repository";
 import * as queueRepository from "../../modules/prospector/queue.repository";
 import * as botLogs from "../../modules/prospector/botlogs.repository";
 
 export type SessionMode = "until_done" | "custom";
 
-export async function startSessionService(
-  ownerId: string,
+export async function startSessionForCampaign(
+  campaignId: string,
   input: { mode: SessionMode; startAt?: string; endAt?: string },
 ) {
   const startAt = input.mode === "custom" && input.startAt ? input.startAt : new Date().toISOString();
@@ -13,7 +13,7 @@ export async function startSessionService(
 
   const isStartingNow = new Date(startAt).getTime() <= Date.now();
 
-  const config = await prospectorRepository.updateConfig(ownerId, {
+  const campaign = await campaignsRepository.update(campaignId, {
     session_mode: input.mode,
     session_start_at: startAt,
     session_end_at: endAt,
@@ -24,62 +24,67 @@ export async function startSessionService(
     isStartingNow
       ? `Bot ativado agora${endAt ? ` até ${new Date(endAt).toLocaleTimeString("pt-BR")}` : input.mode === "until_done" ? " (até terminar a fila de hoje)" : ""}.`
       : `Bot agendado para iniciar às ${new Date(startAt).toLocaleTimeString("pt-BR")}.`,
+    "info",
+    campaignId,
   );
 
-  return config;
+  return campaign;
 }
 
-export async function stopSessionService(ownerId: string) {
-  const config = await prospectorRepository.updateConfig(ownerId, {
+export async function stopSessionForCampaign(campaignId: string) {
+  const campaign = await campaignsRepository.update(campaignId, {
     is_active: false,
     session_mode: null,
     session_start_at: null,
     session_end_at: null,
   });
-  await botLogs.create(`Bot pausado manualmente.`);
-  return config;
+  await botLogs.create(`Bot pausado manualmente.`, "info", campaignId);
+  return campaign;
 }
 
 /**
- * Roda a cada 60s junto com o dispatcher, pra cada dono configurado: liga o bot
- * quando bate o session_start_at agendado, e desliga quando bate o session_end_at
+ * Roda a cada 60s junto com o dispatcher, pra cada campanha: liga o bot quando
+ * bate o session_start_at agendado, e desliga quando bate o session_end_at
  * (modo custom).
  */
 export async function runSessionTick(): Promise<void> {
-  const ownerIds = await prospectorRepository.listConfiguredOwnerIds();
+  const campaigns = await campaignsRepository.findAll();
 
-  for (const ownerId of ownerIds) {
-    const config = await prospectorRepository.getConfig(ownerId);
-    if (!config.session_mode) continue;
+  for (const campaign of campaigns) {
+    if (!campaign.session_mode) continue;
 
     const now = Date.now();
 
-    if (!config.is_active && config.session_start_at && new Date(config.session_start_at).getTime() <= now) {
-      await prospectorRepository.updateConfig(ownerId, { is_active: true });
-      await botLogs.create(`Bot ativado (horário agendado atingido).`);
+    if (!campaign.is_active && campaign.session_start_at && new Date(campaign.session_start_at).getTime() <= now) {
+      await campaignsRepository.update(campaign.id, { is_active: true });
+      await botLogs.create(`Bot ativado (horário agendado atingido).`, "info", campaign.id);
       continue;
     }
 
-    if (config.session_mode === "custom" && config.session_end_at && new Date(config.session_end_at).getTime() <= now) {
-      await stopSessionService(ownerId);
-      await botLogs.create(`Bot pausado automaticamente: horário final da sessão atingido.`);
+    if (
+      campaign.session_mode === "custom" &&
+      campaign.session_end_at &&
+      new Date(campaign.session_end_at).getTime() <= now
+    ) {
+      await stopSessionForCampaign(campaign.id);
+      await botLogs.create(`Bot pausado automaticamente: horário final da sessão atingido.`, "info", campaign.id);
     }
   }
 }
 
 /**
- * Chamado pelo dispatcher após cada tick de um dono: se a sessão é "até terminar a
- * fila de hoje" e não há mais nada esperando, pausa o bot sozinho.
+ * Chamado pelo dispatcher após cada tick de uma campanha: se a sessão é "até
+ * terminar a fila de hoje" e não há mais nada esperando, pausa o bot sozinho.
  */
-export async function checkUntilDoneCompletion(ownerId: string): Promise<void> {
-  const config = await prospectorRepository.getConfig(ownerId);
-  if (config.session_mode !== "until_done" || !config.is_active) return;
+export async function checkUntilDoneCompletion(campaignId: string): Promise<void> {
+  const campaign = await campaignsRepository.findById(campaignId);
+  if (!campaign || campaign.session_mode !== "until_done" || !campaign.is_active) return;
 
-  const remaining = await queueRepository.countToday(ownerId, "waiting");
-  const sentSoFar = await queueRepository.countToday(ownerId, "sent");
+  const remaining = await queueRepository.countToday(campaignId, "waiting");
+  const sentSoFar = await queueRepository.countToday(campaignId, "sent");
 
   if (remaining === 0 && sentSoFar > 0) {
-    await stopSessionService(ownerId);
-    await botLogs.create(`Bot pausado automaticamente: fila de hoje concluída.`);
+    await stopSessionForCampaign(campaignId);
+    await botLogs.create(`Bot pausado automaticamente: fila de hoje concluída.`, "info", campaignId);
   }
 }

@@ -7,24 +7,11 @@ import * as queueRepository from "./queue.repository";
 import * as planRepository from "./plan.repository";
 import * as botLogs from "./botlogs.repository";
 import * as leadsRepository from "../leads/leads.repository";
-import {
-  getEffectiveDailyLimit,
-  isWarmingDone,
-} from "../../workers/prospector/warming";
-import {
-  buildTodayQueue,
-  enqueueLeadNow,
-  toDateKey,
-} from "../../workers/prospector/queue-builder.worker";
+import { isWarmingDone } from "../../workers/prospector/warming";
+import { buildTodayQueue, enqueueLeadNow, toDateKey } from "../../workers/prospector/queue-builder.worker";
 import { handleWhatsappWebhook } from "../../workers/prospector/webhook-handler";
-import {
-  startSessionService,
-  stopSessionService,
-} from "../../workers/prospector/session.worker";
+import * as campaignsRepository from "../prospecting-campaigns/prospecting-campaigns.repository";
 
-export { startSessionService, stopSessionService };
-
-const WEEKDAY_KEYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"] as const;
 const SUPPORTED_CHANNELS = ["whatsapp"];
 
 export async function connectInstanceService(
@@ -65,28 +52,20 @@ export async function connectInstanceService(
     (qr as Record<string, unknown>).code ??
     null;
 
-  const instance = await prospectorRepository.upsertInstance(
-    channel,
-    ownerId,
-    instanceName,
-    {
-      status: "connecting",
-      qr_code: typeof qrValue === "string" ? qrValue : null,
-      number_age: numberAge,
-      warming_done: numberAge === "established",
-    },
-  );
+  const instance = await prospectorRepository.upsertInstance(channel, ownerId, instanceName, {
+    status: "connecting",
+    qr_code: typeof qrValue === "string" ? qrValue : null,
+    number_age: numberAge,
+    warming_done: numberAge === "established",
+  });
 
-  await botLogs.create(
-    `Instância "${instanceName}" (${channel}) iniciando conexão (${numberAge}).`,
-  );
+  await botLogs.create(`Instância "${instanceName}" (${channel}) iniciando conexão (${numberAge}).`);
   return { qrcode: typeof qrValue === "string" ? qrValue : null, instance };
 }
 
-export async function getStatusService(ownerId: string) {
+/** Status da conexão de WhatsApp do usuário logado — independe de campanha. */
+export async function getInstanceStatusService(ownerId: string) {
   const instance = await prospectorRepository.findInstanceByChannel("whatsapp", ownerId);
-  const config = await prospectorRepository.getConfig(ownerId);
-
   let connected = instance?.status === "connected";
 
   if (instance && instance.status !== "connected") {
@@ -107,54 +86,22 @@ export async function getStatusService(ownerId: string) {
     }
   }
 
-  const todayKey = WEEKDAY_KEYS[new Date().getDay()];
-  const dayConfig = config.schedule[todayKey];
-  const todayLimit =
-    instance && dayConfig ? getEffectiveDailyLimit(instance, dayConfig) : 0;
-  const todayCount = await queueRepository.countToday(ownerId, "sent");
-  const queueSize = await queueRepository.countToday(ownerId, "waiting");
-  const activeMessage = await messagesRepository.findActive(ownerId);
-
   return {
     connected,
-    is_active: config.is_active,
-    todayCount,
-    todayLimit,
-    queueSize,
-    activeMessage,
+    instanceName: instance?.instance_name ?? null,
     warmingDone: instance ? isWarmingDone(instance) : true,
-    filters: config.filters,
-    sessionMode: config.session_mode,
-    sessionStartAt: config.session_start_at,
-    sessionEndAt: config.session_end_at,
   };
 }
 
-export async function getConfigService(ownerId: string) {
-  return prospectorRepository.getConfig(ownerId);
+export async function listMessagesService(campaignId: string) {
+  return messagesRepository.findAll(campaignId);
 }
 
-export async function updateConfigService(ownerId: string, patch: Record<string, unknown>) {
-  return prospectorRepository.updateConfig(ownerId, patch);
+export async function createMessageService(campaignId: string, data: Record<string, unknown>) {
+  return messagesRepository.create(campaignId, data);
 }
 
-export async function toggleService(ownerId: string) {
-  const config = await prospectorRepository.getConfig(ownerId);
-  return prospectorRepository.updateConfig(ownerId, { is_active: !config.is_active });
-}
-
-export async function listMessagesService(ownerId: string) {
-  return messagesRepository.findAll(ownerId);
-}
-
-export async function createMessageService(ownerId: string, data: Record<string, unknown>) {
-  return messagesRepository.create(ownerId, data);
-}
-
-export async function updateMessageService(
-  id: string,
-  patch: Record<string, unknown>,
-) {
+export async function updateMessageService(id: string, patch: Record<string, unknown>) {
   return messagesRepository.update(id, patch);
 }
 
@@ -162,56 +109,56 @@ export async function deleteMessageService(id: string) {
   return messagesRepository.remove(id);
 }
 
-export async function uploadMediaService(input: {
-  fileName: string;
-  mimeType: string;
-  dataBase64: string;
-}) {
+export async function uploadMediaService(input: { fileName: string; mimeType: string; dataBase64: string }) {
   const url = await mediaRepository.uploadMedia(input.fileName, input.mimeType, input.dataBase64);
   return { url };
 }
 
-export async function buildQueueService(ownerId: string) {
-  return buildTodayQueue(ownerId);
+export async function buildQueueService(campaignId: string) {
+  const campaign = await campaignsRepository.findById(campaignId);
+  if (!campaign) throw new Error("Campanha não encontrada.");
+  return buildTodayQueue(campaign);
 }
 
-export async function listQueueService(ownerId: string) {
-  return queueRepository.findAllForToday(ownerId);
+export async function listQueueService(campaignId: string) {
+  return queueRepository.findAllForToday(campaignId);
 }
 
-export async function listLogsService() {
-  return botLogs.findRecent(100);
+export async function listLogsService(campaignId?: string) {
+  return campaignId ? botLogs.findRecentByCampaign(campaignId, 100) : botLogs.findRecent(100);
 }
 
-export async function handleWebhookService(
-  channel: string,
-  payload: Record<string, unknown>,
-) {
+export async function handleWebhookService(channel: string, payload: Record<string, unknown>) {
   if (channel === "whatsapp") {
     await handleWhatsappWebhook(payload);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Plano semanal (arrastar lead pra um dia no "Kanban do bot")
+// Plano semanal (arrastar lead pra um dia no "Kanban do bot" de uma campanha)
 // ---------------------------------------------------------------------------
 
-export async function listPlanService(ownerId: string) {
-  return planRepository.findAll(ownerId);
+export async function listPlanService(campaignId: string) {
+  return planRepository.findAll(campaignId);
 }
 
-export async function assignLeadToDayService(leadId: string, date: string, ownerId: string) {
+export async function assignLeadToDayService(leadId: string, date: string, campaignId: string) {
   const todayKey = toDateKey(new Date());
 
   if (date === todayKey) {
-    return enqueueLeadNow(leadId, ownerId);
+    return enqueueLeadNow(leadId, campaignId);
+  }
+
+  const existingCampaignId = await leadsRepository.findCampaignIdForLead(leadId);
+  if (existingCampaignId && existingCampaignId !== campaignId) {
+    const other = await campaignsRepository.findById(existingCampaignId);
+    return { ok: false, reason: `Este lead já está na campanha "${other?.name ?? "outra"}".` };
   }
 
   const lead = await leadsRepository.findById(leadId);
-  if (!lead?.whatsapp)
-    return { ok: false, reason: "Lead sem WhatsApp cadastrado." };
+  if (!lead?.whatsapp) return { ok: false, reason: "Lead sem WhatsApp cadastrado." };
 
-  await planRepository.assign(leadId, date, ownerId);
+  await planRepository.assign(leadId, date, campaignId);
   return { ok: true };
 }
 

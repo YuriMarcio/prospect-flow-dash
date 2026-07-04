@@ -10,36 +10,43 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { getBotConfig, updateBotConfig, type BotConfig } from "@/lib/prospector";
+import { getCampaign, updateCampaign, type Schedule } from "@/lib/prospector";
 import { AgendaTab } from "./AgendaTab";
 import { FiltersTab } from "./FiltersTab";
 import { MessagesTab } from "./MessagesTab";
 
 export function BotConfigModal({
+  campaignId,
   open,
   onOpenChange,
 }: {
+  campaignId: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
   const queryClient = useQueryClient();
-  const configQuery = useQuery({ queryKey: ["bot-config"], queryFn: getBotConfig, enabled: open });
+  const campaignQuery = useQuery({
+    queryKey: ["campaign", campaignId],
+    queryFn: () => getCampaign(campaignId),
+    enabled: open,
+  });
 
-  const [schedule, setSchedule] = useState<BotConfig["schedule"] | null>(null);
+  const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [filters, setFilters] = useState<{ cities: string[]; segments: string[] } | null>(null);
 
   useEffect(() => {
-    if (configQuery.data) {
-      setSchedule(configQuery.data.schedule);
-      setFilters(configQuery.data.filters);
+    if (campaignQuery.data) {
+      setSchedule(campaignQuery.data.schedule);
+      setFilters(campaignQuery.data.filters);
     }
-  }, [configQuery.data]);
+  }, [campaignQuery.data]);
 
   const saveMutation = useMutation({
-    mutationFn: () => updateBotConfig({ schedule: schedule!, filters: filters! }),
+    mutationFn: () => updateCampaign(campaignId, { schedule: schedule!, filters: filters! }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bot-config"] });
-      queryClient.invalidateQueries({ queryKey: ["bot-status"] });
+      queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-status", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       onOpenChange(false);
     },
   });
@@ -50,7 +57,7 @@ export function BotConfigModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Bot className="h-4 w-4 text-primary" />
-            Configurar bot de disparos
+            Configurar {campaignQuery.data?.name ?? "campanha"}
           </DialogTitle>
         </DialogHeader>
 
@@ -71,7 +78,7 @@ export function BotConfigModal({
             </TabsContent>
 
             <TabsContent value="mensagens">
-              <MessagesTab />
+              <MessagesTab campaignId={campaignId} />
             </TabsContent>
           </Tabs>
         ) : (

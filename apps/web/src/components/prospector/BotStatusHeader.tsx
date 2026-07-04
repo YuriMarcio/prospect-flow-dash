@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MessageCircle, Play, Settings2, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { stopBotSession, type BotStatus } from "@/lib/prospector";
+import { stopCampaignSession, type CampaignStatus } from "@/lib/prospector";
 import { StartSessionDialog } from "./StartSessionDialog";
 
 function formatTime(iso: string | null): string | null {
@@ -13,11 +13,15 @@ function formatTime(iso: string | null): string | null {
 }
 
 export function BotStatusHeader({
+  campaignId,
+  campaignName,
   status,
   onConfigure,
   onConnect,
 }: {
-  status: BotStatus | undefined;
+  campaignId: string;
+  campaignName: string;
+  status: CampaignStatus | undefined;
   onConfigure: () => void;
   onConnect: () => void;
 }) {
@@ -28,8 +32,8 @@ export function BotStatusHeader({
   const isActive = status?.is_active ?? false;
 
   const stopMutation = useMutation({
-    mutationFn: stopBotSession,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bot-status"] }),
+    mutationFn: () => stopCampaignSession(campaignId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign-status", campaignId] }),
   });
 
   function handlePillClick() {
@@ -43,7 +47,7 @@ export function BotStatusHeader({
   return (
     <div className="flex items-center justify-between gap-3 flex-wrap">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Pipeline comercial</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{campaignName}</h1>
         <p className="text-sm text-muted-foreground">
           Arraste leads entre colunas · bot ativo gerenciando disparos
         </p>
@@ -114,11 +118,11 @@ export function BotStatusHeader({
 
         <Button variant="outline" onClick={onConfigure}>
           <Settings2 className="h-4 w-4" />
-          Configurar bot
+          Configurar campanha
         </Button>
       </div>
 
-      <StartSessionDialog open={startDialogOpen} onOpenChange={setStartDialogOpen} />
+      <StartSessionDialog campaignId={campaignId} open={startDialogOpen} onOpenChange={setStartDialogOpen} />
     </div>
   );
 }

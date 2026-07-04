@@ -1,6 +1,7 @@
 import * as queueRepository from "../../modules/prospector/queue.repository";
 import * as messagesRepository from "../../modules/prospector/messages.repository";
 import * as prospectorRepository from "../../modules/prospector/prospector.repository";
+import * as campaignsRepository from "../../modules/prospecting-campaigns/prospecting-campaigns.repository";
 import * as botLogs from "../../modules/prospector/botlogs.repository";
 import * as leadsRepository from "../../modules/leads/leads.repository";
 import { getEvolutionClient } from "../../lib/evolution";
@@ -68,6 +69,8 @@ export async function handleWhatsappWebhook(payload: Record<string, unknown>): P
   const lead = await leadsRepository.findByWhatsapp(inbound.phone);
   if (!lead) return;
 
+  const campaignId: string | null = lead.prospecting_campaign_id ?? null;
+
   const lastSent = await queueRepository.findMostRecentSentForLead(lead.id);
   if (!lastSent || !lastSent.sent_at) return;
 
@@ -87,24 +90,27 @@ export async function handleWhatsappWebhook(payload: Record<string, unknown>): P
   });
 
   if (classification === "bot") {
-    await botLogs.create(`Resposta de ${lead.name} classificada como BOT. Lead mantido em prospecção.`, "info");
+    await botLogs.create(`Resposta de ${lead.name} classificada como BOT. Lead mantido em prospecção.`, "info", campaignId ?? undefined);
     return;
   }
 
   await leadsRepository.update(lead.id, { status: "negociacao", column_id: "col-3" });
-  await botLogs.create(`Resposta de ${lead.name} classificada como ${classification.toUpperCase()}. Lead movido para Negociação.`, "info");
+  await botLogs.create(
+    `Resposta de ${lead.name} classificada como ${classification.toUpperCase()}. Lead movido para Negociação.`,
+    "info",
+    campaignId ?? undefined,
+  );
 
-  await sendChainedReplyIfConfigured(lead, lastSent, inbound.phone, instance);
+  await sendChainedReplyIfConfigured(lead, lastSent, inbound.phone, campaignId);
 }
 
 async function sendChainedReplyIfConfigured(
   lead: { id: string; name: string; whatsapp: string | null },
   lastSent: { message_id: string | null },
   digitsOnly: string,
-  instance: { instance_name: string; owner_id: string; status: string },
+  campaignId: string | null,
 ): Promise<void> {
-  if (!lastSent.message_id) return;
-  if (instance.status !== "connected") return;
+  if (!lastSent.message_id || !campaignId) return;
 
   const originalMessage = await messagesRepository.findById(lastSent.message_id);
   if (!originalMessage?.reply_message_id) return;
@@ -112,12 +118,18 @@ async function sendChainedReplyIfConfigured(
   const replyMessage = await messagesRepository.findById(originalMessage.reply_message_id);
   if (!replyMessage) return;
 
+  const campaign = await campaignsRepository.findById(campaignId);
+  if (!campaign) return;
+
+  const instance = await prospectorRepository.findInstanceByChannel("whatsapp", campaign.owner_user_id);
+  if (!instance || instance.status !== "connected") return;
+
   const client = getEvolutionClient();
   await sendMessageBlocks(client, instance.instance_name, digitsOnly, replyMessage.bot_message_blocks);
 
   await queueRepository.insertMany([
     {
-      owner_id: instance.owner_id,
+      prospecting_campaign_id: campaignId,
       lead_id: lead.id,
       channel: "whatsapp",
       message_id: replyMessage.id,
@@ -127,5 +139,5 @@ async function sendChainedReplyIfConfigured(
     },
   ]);
 
-  await botLogs.create(`Resposta automática "${replyMessage.title}" enviada para ${lead.name}.`, "info");
+  await botLogs.create(`Resposta automática "${replyMessage.title}" enviada para ${lead.name}.`, "info", campaignId);
 }

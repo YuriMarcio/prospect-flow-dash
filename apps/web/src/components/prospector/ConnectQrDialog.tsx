@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { connectWhatsapp, getBotStatus } from "@/lib/prospector";
+import { connectWhatsapp, getInstanceStatus } from "@/lib/prospector";
 
 export function ConnectQrDialog({
   open,
@@ -32,15 +32,16 @@ export function ConnectQrDialog({
   });
 
   const statusQuery = useQuery({
-    queryKey: ["bot-status-connecting"],
-    queryFn: getBotStatus,
+    queryKey: ["instance-status-connecting"],
+    queryFn: getInstanceStatus,
     enabled: open && Boolean(qrcode),
     refetchInterval: open && Boolean(qrcode) ? 3000 : false,
   });
 
   useEffect(() => {
     if (statusQuery.data?.connected) {
-      queryClient.invalidateQueries({ queryKey: ["bot-status"] });
+      queryClient.invalidateQueries({ queryKey: ["instance-status"] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-status"] });
       onOpenChange(false);
     }
   }, [statusQuery.data?.connected]);

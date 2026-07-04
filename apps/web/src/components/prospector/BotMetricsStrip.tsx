@@ -1,6 +1,6 @@
-import type { BotStatus } from "@/lib/prospector";
+import type { CampaignStatus } from "@/lib/prospector";
 
-export function BotMetricsStrip({ status }: { status: BotStatus | undefined }) {
+export function BotMetricsStrip({ status }: { status: CampaignStatus | undefined }) {
   const responseRate =
     status && status.todayCount > 0
       ? Math.round(((status.todayCount - status.queueSize) / status.todayCount) * 100)

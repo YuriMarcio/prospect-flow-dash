@@ -1,6 +1,6 @@
-import type { BotConfig, DaySchedule } from "@/lib/prospector";
+import type { DaySchedule, Schedule } from "@/lib/prospector";
 
-const DAYS: { key: keyof BotConfig["schedule"]; label: string }[] = [
+const DAYS: { key: keyof Schedule; label: string }[] = [
   { key: "seg", label: "Seg" },
   { key: "ter", label: "Ter" },
   { key: "qua", label: "Qua" },
@@ -14,15 +14,15 @@ export function AgendaTab({
   schedule,
   onChange,
 }: {
-  schedule: BotConfig["schedule"];
-  onChange: (next: BotConfig["schedule"]) => void;
+  schedule: Schedule;
+  onChange: (next: Schedule) => void;
 }) {
-  function toggleDay(key: keyof BotConfig["schedule"]) {
+  function toggleDay(key: keyof Schedule) {
     const day = schedule[key];
     onChange({ ...schedule, [key]: { ...day, enabled: !day.enabled } });
   }
 
-  function setLimit(key: keyof BotConfig["schedule"], limit: number) {
+  function setLimit(key: keyof Schedule, limit: number) {
     onChange({ ...schedule, [key]: { ...schedule[key], limit } });
   }
 

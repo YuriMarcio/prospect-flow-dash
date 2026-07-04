@@ -18,6 +18,13 @@ function toAuthUser(row: {
   return { id: row.id, username: row.username, email: row.email, name: row.name };
 }
 
+export async function listUsers(): Promise<AuthUser[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("users").select("id, username, email, name");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(toAuthUser);
+}
+
 export async function verifyCredentials(username: string, password: string): Promise<AuthUser | null> {
   const supabase = getSupabase();
   const { data: user, error } = await supabase

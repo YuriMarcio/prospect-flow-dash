@@ -13,8 +13,9 @@ import { leadsRoutes } from "./modules/leads/leads.routes";
 import { logsRoutes } from "./modules/logs/logs.routes";
 import { workersRoutes } from "./modules/workers/workers.routes";
 import { prospectorRoutes } from "./modules/prospector/prospector.routes";
+import { prospectingCampaignsRoutes } from "./modules/prospecting-campaigns/prospecting-campaigns.routes";
 import { runDispatchTick } from "./workers/prospector/dispatcher.worker";
-import { buildTodayQueueForAllOwners } from "./workers/prospector/queue-builder.worker";
+import { buildTodayQueueForAllCampaigns } from "./workers/prospector/queue-builder.worker";
 import { runSessionTick } from "./workers/prospector/session.worker";
 
 const app = Fastify({
@@ -101,6 +102,7 @@ async function bootstrap() {
     await app.register(logsRoutes, { prefix: "/logs" });
     await app.register(workersRoutes, { prefix: "/workers" });
     await app.register(prospectorRoutes, { prefix: "/prospector" });
+    await app.register(prospectingCampaignsRoutes, { prefix: "/prospecting-campaigns" });
 
     // 5. Iniciando o servidor
     // O host "0.0.0.0" é importante se for rodar em Docker ou cloud depois
@@ -132,7 +134,7 @@ function setupProspectorScheduler() {
 
     if (isBuildTime && lastBuildDate !== today) {
       lastBuildDate = today;
-      buildTodayQueueForAllOwners().catch((err) => app.log.error({ err }, "[PROSPECTOR] Falha ao construir fila diária"));
+      buildTodayQueueForAllCampaigns().catch((err) => app.log.error({ err }, "[PROSPECTOR] Falha ao construir fila diária"));
     }
   }, 60_000);
 }

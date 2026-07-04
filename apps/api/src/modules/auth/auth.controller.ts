@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from "./auth.constants";
-import { AuthUser, verifyCredentials, verifyGoogleLogin } from "./auth.service";
+import { AuthUser, listUsers, verifyCredentials, verifyGoogleLogin } from "./auth.service";
 
 async function issueSession(user: AuthUser, reply: FastifyReply) {
   const token = await reply.jwtSign(
@@ -56,6 +56,11 @@ export async function googleLoginController(
 
 export async function logoutController(_request: FastifyRequest, reply: FastifyReply) {
   return reply.clearCookie(SESSION_COOKIE_NAME, { path: "/" }).status(204).send();
+}
+
+export async function listUsersController(_request: FastifyRequest, reply: FastifyReply) {
+  const users = await listUsers();
+  return reply.send(users);
 }
 
 export async function meController(request: FastifyRequest, reply: FastifyReply) {

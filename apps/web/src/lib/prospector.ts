@@ -1,6 +1,12 @@
 import { request } from "@/lib/api";
 
-export interface BotStatus {
+export interface InstanceStatus {
+  connected: boolean;
+  instanceName: string | null;
+  warmingDone: boolean;
+}
+
+export interface CampaignStatus {
   connected: boolean;
   is_active: boolean;
   todayCount: number;
@@ -25,15 +31,26 @@ export interface DaySchedule {
   limit: number;
 }
 
-export interface BotConfig {
+export type Schedule = Record<"seg" | "ter" | "qua" | "qui" | "sex" | "sab" | "dom", DaySchedule>;
+
+export interface ProspectingCampaign {
   id: string;
-  schedule: Record<"seg" | "ter" | "qua" | "qui" | "sex" | "sab" | "dom", DaySchedule>;
+  name: string;
+  owner_user_id: string;
+  created_by_user_id: string;
+  region: string | null;
+  segment: string | null;
   filters: { cities: string[]; segments: string[] };
+  schedule: Schedule;
   window_start: string;
   window_end: string;
   min_interval_ms: number;
   jitter_ms: number;
   is_active: boolean;
+  session_mode: "until_done" | "custom" | null;
+  session_start_at: string | null;
+  session_end_at: string | null;
+  created_at: string;
 }
 
 export interface MessageBlock {
@@ -69,6 +86,8 @@ export interface BotLog {
   created_at: string;
 }
 
+// ─── Conexão de WhatsApp (por usuário logado) ────────────────────────────────
+
 export async function connectWhatsapp(input: {
   instanceName: string;
   numberAge: "new" | "established";
@@ -79,52 +98,84 @@ export async function connectWhatsapp(input: {
   });
 }
 
-export async function getBotStatus(): Promise<BotStatus> {
-  return request("/prospector/status");
+export async function getInstanceStatus(): Promise<InstanceStatus> {
+  return request("/prospector/instance-status");
 }
 
-export async function getBotConfig(): Promise<BotConfig> {
-  return request("/prospector/config");
+// ─── Campanhas de prospecção ──────────────────────────────────────────────────
+
+export async function listCampaigns(): Promise<ProspectingCampaign[]> {
+  return request("/prospecting-campaigns");
 }
 
-export async function updateBotConfig(patch: Partial<BotConfig>): Promise<BotConfig> {
-  return request("/prospector/config", {
-    method: "PUT",
-    body: JSON.stringify(patch),
-  });
+export async function getCampaign(id: string): Promise<ProspectingCampaign> {
+  return request(`/prospecting-campaigns/${id}`);
 }
 
-export async function toggleBot(): Promise<BotConfig> {
-  return request("/prospector/toggle", { method: "POST" });
-}
-
-export async function startBotSession(input: {
-  mode: "until_done" | "custom";
-  startAt?: string;
-  endAt?: string;
-}): Promise<BotConfig> {
-  return request("/prospector/session/start", {
+export async function createCampaign(input: {
+  region: string;
+  segment?: string | null;
+  ownerUserId: string;
+  filters?: { cities: string[]; segments: string[] };
+  schedule?: Schedule;
+  windowStart?: string;
+  windowEnd?: string;
+}): Promise<ProspectingCampaign> {
+  return request("/prospecting-campaigns", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
-export async function stopBotSession(): Promise<BotConfig> {
-  return request("/prospector/session/stop", { method: "POST" });
+export async function updateCampaign(
+  id: string,
+  patch: Partial<Pick<ProspectingCampaign, "schedule" | "filters" | "window_start" | "window_end">>,
+): Promise<ProspectingCampaign> {
+  return request(`/prospecting-campaigns/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
 }
 
-export async function listBotMessages(): Promise<BotMessage[]> {
-  return request("/prospector/messages");
+export async function toggleCampaign(id: string): Promise<ProspectingCampaign> {
+  return request(`/prospecting-campaigns/${id}/toggle`, { method: "POST" });
 }
 
-export async function createBotMessage(input: {
-  title: string;
-  status: BotMessage["status"];
-  ab_limit?: number;
-  reply_message_id?: string | null;
-  blocks: MessageBlock[];
-}): Promise<BotMessage> {
-  return request("/prospector/messages", {
+export async function getCampaignStatus(id: string): Promise<CampaignStatus> {
+  return request(`/prospecting-campaigns/${id}/status`);
+}
+
+export async function startCampaignSession(
+  id: string,
+  input: { mode: "until_done" | "custom"; startAt?: string; endAt?: string },
+): Promise<ProspectingCampaign> {
+  return request(`/prospecting-campaigns/${id}/session/start`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function stopCampaignSession(id: string): Promise<ProspectingCampaign> {
+  return request(`/prospecting-campaigns/${id}/session/stop`, { method: "POST" });
+}
+
+// ─── Mensagens (por campanha) ─────────────────────────────────────────────────
+
+export async function listBotMessages(campaignId: string): Promise<BotMessage[]> {
+  return request(`/prospector/messages?campaignId=${campaignId}`);
+}
+
+export async function createBotMessage(
+  campaignId: string,
+  input: {
+    title: string;
+    status: BotMessage["status"];
+    ab_limit?: number;
+    reply_message_id?: string | null;
+    blocks: MessageBlock[];
+  },
+): Promise<BotMessage> {
+  return request(`/prospector/messages?campaignId=${campaignId}`, {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -164,25 +215,28 @@ export async function uploadBotMedia(file: File): Promise<{ url: string }> {
   });
 }
 
-export async function buildQueueNow(): Promise<{ queued: number }> {
-  return request("/prospector/queue/build", { method: "POST" });
+// ─── Fila e plano (por campanha) ──────────────────────────────────────────────
+
+export async function buildQueueNow(campaignId: string): Promise<{ queued: number }> {
+  return request(`/prospector/queue/build?campaignId=${campaignId}`, { method: "POST" });
 }
 
-export async function listDispatchQueue(): Promise<DispatchQueueItem[]> {
-  return request("/prospector/queue");
+export async function listDispatchQueue(campaignId: string): Promise<DispatchQueueItem[]> {
+  return request(`/prospector/queue?campaignId=${campaignId}`);
 }
 
-export async function listBotLogs(): Promise<BotLog[]> {
-  return request("/prospector/logs");
+export async function listBotLogs(campaignId?: string): Promise<BotLog[]> {
+  return request(campaignId ? `/prospector/logs?campaignId=${campaignId}` : "/prospector/logs");
 }
 
-export async function listDispatchPlan(): Promise<DispatchPlanItem[]> {
-  return request("/prospector/plan");
+export async function listDispatchPlan(campaignId: string): Promise<DispatchPlanItem[]> {
+  return request(`/prospector/plan?campaignId=${campaignId}`);
 }
 
 export async function assignLeadToDay(input: {
   leadId: string;
   date: string;
+  campaignId: string;
 }): Promise<{ ok: boolean; reason?: string }> {
   return request("/prospector/plan", {
     method: "POST",

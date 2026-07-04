@@ -2,35 +2,38 @@ import { getSupabase } from "../../lib/supabase";
 
 export interface DispatchPlanRow {
   id: string;
-  owner_id: string;
+  prospecting_campaign_id: string;
   lead_id: string;
   planned_date: string;
   created_at: string;
 }
 
-export async function findAll(ownerId: string): Promise<DispatchPlanRow[]> {
+export async function findAll(campaignId: string): Promise<DispatchPlanRow[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase.from("dispatch_plan").select("*").eq("owner_id", ownerId);
+  const { data, error } = await supabase
+    .from("dispatch_plan")
+    .select("*")
+    .eq("prospecting_campaign_id", campaignId);
   if (error) throw new Error(error.message);
   return data;
 }
 
-export async function findByDate(date: string, ownerId: string): Promise<DispatchPlanRow[]> {
+export async function findByDate(date: string, campaignId: string): Promise<DispatchPlanRow[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("dispatch_plan")
     .select("*")
     .eq("planned_date", date)
-    .eq("owner_id", ownerId);
+    .eq("prospecting_campaign_id", campaignId);
   if (error) throw new Error(error.message);
   return data;
 }
 
-export async function assign(leadId: string, date: string, ownerId: string): Promise<DispatchPlanRow> {
+export async function assign(leadId: string, date: string, campaignId: string): Promise<DispatchPlanRow> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("dispatch_plan")
-    .upsert([{ lead_id: leadId, planned_date: date, owner_id: ownerId }], { onConflict: "lead_id" })
+    .upsert([{ lead_id: leadId, planned_date: date, prospecting_campaign_id: campaignId }], { onConflict: "lead_id" })
     .select()
     .single();
 

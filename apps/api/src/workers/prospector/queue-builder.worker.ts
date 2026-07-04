@@ -4,6 +4,8 @@ import * as queueRepository from "../../modules/prospector/queue.repository";
 import * as planRepository from "../../modules/prospector/plan.repository";
 import * as botLogs from "../../modules/prospector/botlogs.repository";
 import * as leadsRepository from "../../modules/leads/leads.repository";
+import * as campaignsRepository from "../../modules/prospecting-campaigns/prospecting-campaigns.repository";
+import type { ProspectingCampaignRow } from "../../modules/prospecting-campaigns/prospecting-campaigns.repository";
 import { getEffectiveDailyLimit, getDispatchInterval } from "./warming";
 
 const WEEKDAY_KEYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"] as const;
@@ -26,44 +28,45 @@ function parseTimeOnDate(date: Date, time: string): Date {
   return result;
 }
 
-async function pickMessage(ownerId: string) {
-  const abMessage = await messagesRepository.findNextAbTest(ownerId);
+async function pickMessage(campaignId: string) {
+  const abMessage = await messagesRepository.findNextAbTest(campaignId);
   if (abMessage) return abMessage;
-  return messagesRepository.findActive(ownerId);
+  return messagesRepository.findActive(campaignId);
 }
 
 /**
- * Constrói a fila do dia para um dono específico. Leads colocados manualmente em
- * "Hoje" (dispatch_plan) têm prioridade total e entram sem passar pelos filtros de
- * cidade/segmento — só depois disso o restante das vagas é preenchido pela seleção
- * automática. A lista de leads já enfileirados hoje é GLOBAL (todos os donos), pra
- * duas pessoas não mandarem mensagem pro mesmo lead compartilhado no mesmo dia.
+ * Constrói a fila do dia para uma campanha específica. Leads colocados
+ * manualmente em "Hoje" (dispatch_plan) têm prioridade total e entram sem
+ * passar pelos filtros de cidade/segmento — só depois disso o restante das
+ * vagas é preenchido pela seleção automática. A lista de leads já enfileirados
+ * hoje é GLOBAL (todas as campanhas), pra duas campanhas não mandarem mensagem
+ * pro mesmo lead compartilhado no mesmo dia. Um lead só pode pertencer a uma
+ * campanha por vez — reivindicado atomicamente no momento do envio.
  */
-export async function buildTodayQueue(ownerId: string): Promise<{ queued: number }> {
-  const config = await prospectorRepository.getConfig(ownerId);
+export async function buildTodayQueue(campaign: ProspectingCampaignRow): Promise<{ queued: number }> {
   const today = new Date();
   const dayKey = WEEKDAY_KEYS[today.getDay()];
-  const dayConfig = config.schedule[dayKey];
+  const dayConfig = campaign.schedule[dayKey];
 
   if (!dayConfig || !dayConfig.enabled) {
-    await botLogs.create(`Dia "${dayKey}" desabilitado na agenda. Fila não construída.`, "info");
+    await botLogs.create(`[${campaign.name}] Dia "${dayKey}" desabilitado na agenda. Fila não construída.`, "info", campaign.id);
     return { queued: 0 };
   }
 
-  const instance = await prospectorRepository.findInstanceByChannel("whatsapp", ownerId);
+  const instance = await prospectorRepository.findInstanceByChannel("whatsapp", campaign.owner_user_id);
   if (!instance || instance.status !== "connected") {
-    await botLogs.create(`Instância WhatsApp não conectada. Fila não construída.`, "warn");
+    await botLogs.create(`[${campaign.name}] Instância WhatsApp não conectada. Fila não construída.`, "warn", campaign.id);
     return { queued: 0 };
   }
 
   const effectiveLimit = getEffectiveDailyLimit(instance, dayConfig);
   if (effectiveLimit <= 0) {
-    await botLogs.create(`Limite efetivo do dia é 0. Fila não construída.`, "info");
+    await botLogs.create(`[${campaign.name}] Limite efetivo do dia é 0. Fila não construída.`, "info", campaign.id);
     return { queued: 0 };
   }
 
   const todayKey = toDateKey(today);
-  const plannedToday = await planRepository.findByDate(todayKey, ownerId);
+  const plannedToday = await planRepository.findByDate(todayKey, campaign.id);
   const alreadyQueuedIds = await queueRepository.findLeadIdsQueuedToday();
 
   const plannedLeads = [];
@@ -76,36 +79,44 @@ export async function buildTodayQueue(ownerId: string): Promise<{ queued: number
   const remainingSlots = Math.max(0, effectiveLimit - plannedLeads.length);
   const excludeIds = [...alreadyQueuedIds, ...plannedLeads.map((l) => l.id)];
   const autoCandidates = remainingSlots > 0
-    ? await leadsRepository.findProspectingCandidates(config.filters, excludeIds)
+    ? await leadsRepository.findProspectingCandidates(campaign.filters, excludeIds)
     : [];
 
   const selected = [...plannedLeads, ...autoCandidates.slice(0, remainingSlots)];
 
   if (selected.length === 0) {
-    await botLogs.create(`Nenhum lead candidato encontrado para hoje.`, "info");
+    await botLogs.create(`[${campaign.name}] Nenhum lead candidato encontrado para hoje.`, "info", campaign.id);
     return { queued: 0 };
   }
 
   const { minIntervalMs, jitterMs } = getDispatchInterval(instance, effectiveLimit);
-  const windowStart = parseTimeOnDate(today, config.window_start);
-  const windowEnd = parseTimeOnDate(today, config.window_end);
+  const windowStart = parseTimeOnDate(today, campaign.window_start);
+  const windowEnd = parseTimeOnDate(today, campaign.window_end);
 
   const rows: Record<string, unknown>[] = [];
+  const claimedLeadIds: string[] = [];
   let cursor = windowStart.getTime();
 
   for (const lead of selected) {
     const scheduledAt = new Date(cursor + randomJitter(jitterMs));
     if (scheduledAt.getTime() > windowEnd.getTime()) break;
 
-    const message = await pickMessage(ownerId);
+    const message = await pickMessage(campaign.id);
     if (!message) {
-      await botLogs.create(`Nenhuma mensagem ativa configurada. Pulando lead ${lead.name}.`, "warn");
+      await botLogs.create(`[${campaign.name}] Nenhuma mensagem ativa configurada. Pulando lead ${lead.name}.`, "warn", campaign.id);
       cursor += minIntervalMs;
       continue;
     }
 
+    const claimed = await leadsRepository.claimForCampaign(lead.id, campaign.id);
+    if (!claimed) {
+      // Já foi reivindicado por outra campanha entre a seleção e agora — pula sem gastar o slot.
+      continue;
+    }
+    claimedLeadIds.push(lead.id);
+
     rows.push({
-      owner_id: ownerId,
+      prospecting_campaign_id: campaign.id,
       lead_id: lead.id,
       channel: "whatsapp",
       message_id: message.id,
@@ -117,53 +128,65 @@ export async function buildTodayQueue(ownerId: string): Promise<{ queued: number
   }
 
   await queueRepository.insertMany(rows);
-  await planRepository.removeMany(plannedLeads.map((l) => l.id));
+  await planRepository.removeMany(plannedLeads.filter((l) => claimedLeadIds.includes(l.id)).map((l) => l.id));
   await botLogs.create(
-    `Fila construída: ${rows.length} leads agendados para hoje (${plannedLeads.length} planejados manualmente).`,
+    `[${campaign.name}] Fila construída: ${rows.length} leads agendados para hoje (${plannedLeads.length} planejados manualmente).`,
     "info",
+    campaign.id,
   );
   return { queued: rows.length };
 }
 
 /**
- * Roda a construção de fila pra todos os donos configurados, um de cada vez —
- * sequencial de propósito, pra exclusão de leads já enfileirados hoje (compartilhada
- * entre donos) refletir o que o dono anterior acabou de reservar.
+ * Roda a construção de fila pra todas as campanhas ativas com instância
+ * conectada, uma de cada vez — sequencial de propósito, pra exclusão de leads
+ * já enfileirados hoje (compartilhada entre campanhas) refletir o que a
+ * campanha anterior acabou de reivindicar.
  */
-export async function buildTodayQueueForAllOwners(): Promise<{ queued: number }> {
-  const ownerIds = await prospectorRepository.listConfiguredOwnerIds();
+export async function buildTodayQueueForAllCampaigns(): Promise<{ queued: number }> {
+  const campaigns = await campaignsRepository.findActiveWithConnectedInstance();
   let total = 0;
-  for (const ownerId of ownerIds) {
-    const result = await buildTodayQueue(ownerId);
+  for (const campaign of campaigns) {
+    const result = await buildTodayQueue(campaign);
     total += result.queued;
   }
   return { queued: total };
 }
 
 /**
- * Enfileira um lead imediatamente para hoje (arraste manual na coluna "Hoje").
- * Ignora filtros de cidade/segmento e o limite diário — escolha manual tem prioridade.
+ * Enfileira um lead imediatamente para hoje (arraste manual na coluna "Hoje"
+ * do kanban de uma campanha). Ignora filtros de cidade/segmento e o limite
+ * diário — escolha manual tem prioridade. Bloqueia se o lead já pertencer a
+ * outra campanha.
  */
-export async function enqueueLeadNow(leadId: string, ownerId: string): Promise<{ ok: boolean; reason?: string }> {
+export async function enqueueLeadNow(leadId: string, campaignId: string): Promise<{ ok: boolean; reason?: string }> {
   const lead = await leadsRepository.findById(leadId);
   if (!lead?.whatsapp) return { ok: false, reason: "Lead sem WhatsApp cadastrado." };
+
+  const existingCampaignId = await leadsRepository.findCampaignIdForLead(leadId);
+  if (existingCampaignId && existingCampaignId !== campaignId) {
+    const other = await campaignsRepository.findById(existingCampaignId);
+    return { ok: false, reason: `Este lead já está na campanha "${other?.name ?? "outra"}".` };
+  }
+
+  const campaign = await campaignsRepository.findById(campaignId);
+  if (!campaign) return { ok: false, reason: "Campanha não encontrada." };
 
   const alreadyQueuedIds = await queueRepository.findLeadIdsQueuedToday();
   if (alreadyQueuedIds.includes(leadId)) return { ok: false, reason: "Lead já está na fila de hoje." };
 
-  const instance = await prospectorRepository.findInstanceByChannel("whatsapp", ownerId);
+  const instance = await prospectorRepository.findInstanceByChannel("whatsapp", campaign.owner_user_id);
   if (!instance || instance.status !== "connected") {
     return { ok: false, reason: "Instância WhatsApp não conectada." };
   }
 
-  const message = await pickMessage(ownerId);
+  const message = await pickMessage(campaignId);
   if (!message) return { ok: false, reason: "Nenhuma mensagem ativa configurada." };
 
-  const config = await prospectorRepository.getConfig(ownerId);
-  const dayConfig = config.schedule[WEEKDAY_KEYS[new Date().getDay()]];
+  const dayConfig = campaign.schedule[WEEKDAY_KEYS[new Date().getDay()]];
   const effectiveLimit = dayConfig ? getEffectiveDailyLimit(instance, dayConfig) : 0;
   const { minIntervalMs, jitterMs } = getDispatchInterval(instance, effectiveLimit);
-  const todayQueue = await queueRepository.findAllForToday(ownerId);
+  const todayQueue = await queueRepository.findAllForToday(campaignId);
   const lastScheduled = todayQueue.reduce<number | null>((max, item) => {
     const t = new Date(item.scheduled_at).getTime();
     return max === null || t > max ? t : max;
@@ -173,9 +196,12 @@ export async function enqueueLeadNow(leadId: string, ownerId: string): Promise<{
   const baseTime = lastScheduled ? lastScheduled + minIntervalMs : now;
   const scheduledAt = new Date(Math.max(now, baseTime) + randomJitter(jitterMs));
 
+  const claimed = await leadsRepository.claimForCampaign(leadId, campaignId);
+  if (!claimed) return { ok: false, reason: "Este lead já foi reivindicado por outra campanha." };
+
   await queueRepository.insertMany([
     {
-      owner_id: ownerId,
+      prospecting_campaign_id: campaignId,
       lead_id: leadId,
       channel: "whatsapp",
       message_id: message.id,
@@ -185,6 +211,6 @@ export async function enqueueLeadNow(leadId: string, ownerId: string): Promise<{
   ]);
 
   await planRepository.unassign(leadId);
-  await botLogs.create(`${lead.name} adicionado manualmente à fila de hoje.`, "info");
+  await botLogs.create(`${lead.name} adicionado manualmente à fila de hoje (${campaign.name}).`, "info", campaign.id);
   return { ok: true };
 }
