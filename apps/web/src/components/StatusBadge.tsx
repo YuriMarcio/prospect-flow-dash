@@ -12,6 +12,7 @@ const map: Record<LeadStatus | string, { label: string; cls: string }> = {
   done: { label: "Concluído", cls: "bg-success/15 text-success" },
   error: { label: "Erro", cls: "bg-destructive/15 text-destructive" },
   queued: { label: "Na fila", cls: "bg-muted text-muted-foreground" },
+  cancelled: { label: "Cancelado", cls: "bg-warning/20 text-warning-foreground dark:text-warning" },
 };
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {

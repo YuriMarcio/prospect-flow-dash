@@ -1,7 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { MoreHorizontal, Plus } from "lucide-react";
 import type { KanbanColumn as KanbanColumnT, Lead } from "@/types";
-import { LeadCard } from "./LeadCard";
+import { LeadCard, type BotDispatchInfo } from "./LeadCard";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -12,7 +12,15 @@ import { useKanbanStore } from "@/store/kanban";
 
 const MAX_VISIBLE = 30;
 
-export function KanbanColumn({ column, leads }: { column: KanbanColumnT; leads: Lead[] }) {
+export function KanbanColumn({
+  column,
+  leads,
+  botDispatchByLeadId,
+}: {
+  column: KanbanColumnT;
+  leads: Lead[];
+  botDispatchByLeadId?: Record<string, BotDispatchInfo>;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const { deleteColumn, updateColumn } = useKanbanStore();
 
@@ -71,7 +79,7 @@ export function KanbanColumn({ column, leads }: { column: KanbanColumnT; leads: 
         className="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"
       >
         {visible.map((lead) => (
-          <LeadCard key={lead.id} lead={lead} />
+          <LeadCard key={lead.id} lead={lead} botDispatch={botDispatchByLeadId?.[lead.id]} />
         ))}
 
         {leads.length === 0 && (

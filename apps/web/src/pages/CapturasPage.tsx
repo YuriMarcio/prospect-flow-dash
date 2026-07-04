@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/StatusBadge";
-import { ChevronDown, ChevronRight, Loader2, Plus, Terminal } from "lucide-react";
-import { createCampaign, listCampaignLogs, listCampaigns } from "@/lib/api";
+import { ChevronDown, ChevronRight, Loader2, Plus, Square, Terminal } from "lucide-react";
+import { createCampaign, listCampaignLogs, listCampaigns, stopCampaign } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -195,6 +195,7 @@ function NewCampaignDialog({
 // ─── Página principal ────────────────────────────────────────────────────────
 
 export function CapturasPage() {
+  const queryClient = useQueryClient();
   const campaignsQuery = useQuery({
     queryKey: ["campaigns"],
     queryFn: listCampaigns,
@@ -211,6 +212,11 @@ export function CapturasPage() {
   // Detecta captura em andamento
   const runningCapture = captures.find((c) => c.status === "running");
   const isRunning = Boolean(runningCapture);
+
+  const stopMutation = useMutation({
+    mutationFn: stopCampaign,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaigns"] }),
+  });
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -269,7 +275,7 @@ export function CapturasPage() {
           {isRunning && (
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground border border-border rounded-lg px-3 py-2">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Aguarde a captura terminar
+              Captura em andamento
             </span>
           )}
           <Button onClick={() => setDialogOpen(true)} disabled={isRunning}>
@@ -327,7 +333,23 @@ export function CapturasPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <StatusBadge status={capture.status} />
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={capture.status} />
+                      {captureIsRunning && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            stopMutation.mutate(capture.id);
+                          }}
+                          disabled={stopMutation.isPending}
+                          title="Parar captura"
+                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-destructive border border-destructive/40 hover:bg-destructive/10 transition disabled:opacity-50"
+                        >
+                          <Square className="h-2.5 w-2.5 fill-current" />
+                          Parar
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 w-56">
                     <div className="flex items-center gap-2">

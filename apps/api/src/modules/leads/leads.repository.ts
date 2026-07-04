@@ -1,4 +1,5 @@
 import { getSupabase } from "../../lib/supabase";
+import { normalizeForMatch } from "../../lib/text";
 
 export async function deleteMany(ids: string[]) {
   if (ids.length === 0) return;
@@ -30,6 +31,22 @@ export async function findById(id: string) {
   return data;
 }
 
+export async function findByWhatsapp(whatsapp: string) {
+  const digits = whatsapp.replace(/\D/g, "");
+  if (!digits) return null;
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("leads")
+    .select("*")
+    .ilike("whatsapp", `%${digits}%`)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function update(id: string, data: Record<string, unknown>) {
   const supabase = getSupabase();
   const { data: lead, error } = await supabase
@@ -43,7 +60,55 @@ export async function update(id: string, data: Record<string, unknown>) {
   return lead;
 }
 
-export async function existsByNameAndCity(name: string, city: string): Promise<boolean> {
+export async function findProspectingCandidates(
+  filters: { cities: string[]; segments: string[] },
+  excludeIds: string[],
+) {
+  const supabase = getSupabase();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- reassigning através de .in()/.not() faz o TS explodir a inferência de tipo do query builder
+  let query: any = supabase
+    .from("leads")
+    .select("id, name, whatsapp, city, category")
+    .eq("status", "novo")
+    .not("whatsapp", "is", null)
+    .order("created_at", { ascending: true });
+
+  if (excludeIds.length > 0)
+    query = query.not("id", "in", `(${excludeIds.join(",")})`);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  const candidates = data as {
+    id: string;
+    name: string;
+    whatsapp: string;
+    city: string;
+    category: string;
+  }[];
+
+  // Comparação normalizada (sem distinção de maiúsculas/acentos) porque cidade/segmento são digitados livremente no filtro
+  const cityFilters = filters.cities.map(normalizeForMatch);
+  const segmentFilters = filters.segments.map(normalizeForMatch);
+
+  return candidates.filter((lead) => {
+    if (
+      cityFilters.length > 0 &&
+      !cityFilters.includes(normalizeForMatch(lead.city ?? ""))
+    )
+      return false;
+    if (
+      segmentFilters.length > 0 &&
+      !segmentFilters.includes(normalizeForMatch(lead.category ?? ""))
+    )
+      return false;
+    return true;
+  });
+}
+
+export async function existsByNameAndCity(
+  name: string,
+  city: string,
+): Promise<boolean> {
   const supabase = getSupabase();
   const { data: rows } = await supabase
     .from("leads")
@@ -77,7 +142,11 @@ async function findDuplicate(data: Record<string, unknown>) {
 
   if (cnpj) {
     checks.push(
-      supabase.from("leads").select("id").ilike("cnpj", cnpj).limit(1)
+      supabase
+        .from("leads")
+        .select("id")
+        .ilike("cnpj", cnpj)
+        .limit(1)
         .then(({ data: rows }) => Boolean(rows?.length)),
     );
   }
@@ -85,32 +154,50 @@ async function findDuplicate(data: Record<string, unknown>) {
   if (instagramUrl) {
     // Tenta as duas variações de coluna usadas no banco
     checks.push(
-      supabase.from("leads").select("id").ilike("instagram_url", instagramUrl).limit(1)
+      supabase
+        .from("leads")
+        .select("id")
+        .ilike("instagram_url", instagramUrl)
+        .limit(1)
         .then(({ data: rows }) => Boolean(rows?.length)),
     );
     checks.push(
-      supabase.from("leads").select("id").ilike("instagram", instagramUrl).limit(1)
+      supabase
+        .from("leads")
+        .select("id")
+        .ilike("instagram", instagramUrl)
+        .limit(1)
         .then(({ data: rows }) => Boolean(rows?.length)),
     );
   }
 
   if (ifoodUrl) {
     checks.push(
-      supabase.from("leads").select("id").ilike("ifood_url", ifoodUrl).limit(1)
+      supabase
+        .from("leads")
+        .select("id")
+        .ilike("ifood_url", ifoodUrl)
+        .limit(1)
         .then(({ data: rows }) => Boolean(rows?.length)),
     );
   }
 
   if (whatsapp) {
     checks.push(
-      supabase.from("leads").select("id").ilike("whatsapp", `%${whatsapp}%`).limit(1)
+      supabase
+        .from("leads")
+        .select("id")
+        .ilike("whatsapp", `%${whatsapp}%`)
+        .limit(1)
         .then(({ data: rows }) => Boolean(rows?.length)),
     );
   }
 
   if (name && address) {
     checks.push(
-      supabase.from("leads").select("id")
+      supabase
+        .from("leads")
+        .select("id")
         .ilike("name", name)
         .ilike("address", address)
         .limit(1)

@@ -124,6 +124,7 @@ export async function runInstagramEnrichment(campaignId: string): Promise<void> 
           biography:     profile.biography   ?? null,
           external_url:  profile.external_url ?? null,
           followers:     profile.follower_count ?? null,
+          bio_links:     bioLinks,
           enriched_at:   new Date().toISOString(),
         })
         .eq("id", lead.id);

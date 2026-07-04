@@ -5,13 +5,24 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Bot, CheckCircle2, ExternalLink, Loader2, Rocket, Search, Store, Terminal, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  Rocket,
+  Search,
+  Store,
+  Terminal,
+  UtensilsCrossed,
+  XCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import {
   createCampaign,
+  createIfoodCampaign,
   createInstaDeliveryCampaign,
   getInstaDeliveryCities,
   listCampaignLogs,
@@ -73,15 +84,6 @@ const CATEGORIES = [
   "Contabilidade",
 ];
 
-const schema = z.object({
-  category: z.string().min(1, "Informe a categoria"),
-  city: z.string().min(1, "Cidade obrigatória"),
-  neighborhood: z.string().optional(),
-  quantity: z.coerce.number().min(1).max(2000),
-});
-
-type FormData = z.infer<typeof schema>;
-
 function buildQueries(category: string, city: string, neighborhood?: string) {
   const location = [neighborhood, city].filter(Boolean).join(" ");
   if (!category || !city) return [];
@@ -105,12 +107,12 @@ function SearchPreview({
   if (queries.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         <Search className="h-3.5 w-3.5" />
         Preview das buscas no Google
       </div>
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {queries.map((q, i) => {
           const url = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
           return (
@@ -132,9 +134,57 @@ function SearchPreview({
           );
         })}
       </div>
-      <p className="text-[10px] text-muted-foreground">
-        Passe o mouse sobre cada query e clique no ícone para testar no Google antes de rodar.
-      </p>
+    </div>
+  );
+}
+
+// ─── Moldura padrão de cada fluxo de captura ────────────────────────────────
+
+function FlowCard({
+  icon: Icon,
+  title,
+  badge,
+  bullets,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  badge: string;
+  bullets: string[];
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-6 space-y-5">
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-primary" />
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <span className="ml-auto text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+          {badge}
+        </span>
+      </div>
+      <ul className="rounded-lg border border-border bg-muted/30 p-3 text-[11px] text-muted-foreground space-y-1">
+        {bullets.map((b) => (
+          <li key={b}>• {b}</li>
+        ))}
+      </ul>
+      {children}
+    </div>
+  );
+}
+
+function FlowFooter({ disabled, pending, label }: { disabled: boolean; pending: boolean; label: string }) {
+  return (
+    <div className="flex items-center justify-between pt-2 border-t border-border">
+      <Link
+        to="/capturas"
+        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Ver execuções →
+      </Link>
+      <Button type="submit" size="lg" disabled={disabled} className="glow-primary">
+        <Rocket className="h-4 w-4" />
+        {pending ? "Iniciando…" : label}
+      </Button>
     </div>
   );
 }
@@ -234,34 +284,23 @@ function ActiveCampaignMonitor({ campaign }: { campaign: Capture }) {
   );
 }
 
-// ─── Página principal ────────────────────────────────────────────────────────
+// ─── Fluxo 1: Descoberta via Instagram ───────────────────────────────────────
 
-export function AutomacaoPage() {
+const instagramSchema = z.object({
+  category: z.string().min(1, "Informe a categoria"),
+  city: z.string().min(1, "Cidade obrigatória"),
+  neighborhood: z.string().optional(),
+  quantity: z.coerce.number().min(1).max(2000),
+});
+
+type InstagramFormData = z.infer<typeof instagramSchema>;
+
+function InstagramForm({ anyRunning }: { anyRunning: boolean }) {
   const queryClient = useQueryClient();
 
-  // Campanhas: polling enquanto alguma está rodando
-  const campaignsQuery = useQuery({
-    queryKey: ["campaigns"],
-    queryFn: listCampaigns,
-    refetchInterval: (q) => {
-      const data = q.state.data as Capture[] | undefined;
-      return data?.some((c) => c.status === "running") ? 3000 : false;
-    },
-  });
-
-  const campaigns = campaignsQuery.data ?? [];
-  const activeCampaign = campaigns.find((c) => c.status === "running")
-    ?? (campaigns[0]?.status === "done" || campaigns[0]?.status === "error" ? campaigns[0] : undefined);
-  const anyRunning = campaigns.some((c) => c.status === "running");
-
-  const form = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      category: "",
-      city: "",
-      neighborhood: "",
-      quantity: 100,
-    },
+  const form = useForm<InstagramFormData>({
+    resolver: zodResolver(instagramSchema),
+    defaultValues: { category: "", city: "", neighborhood: "", quantity: 100 },
   });
 
   const [category, city, neighborhood] = useWatch({
@@ -270,7 +309,7 @@ export function AutomacaoPage() {
   });
 
   const mutation = useMutation({
-    mutationFn: (data: FormData) => createCampaign(data),
+    mutationFn: (data: InstagramFormData) => createCampaign(data),
     onSuccess: (campaign) => {
       toast.success("Captura iniciada!", {
         description: `${campaign.category} em ${campaign.city} • ${campaign.quantity} leads`,
@@ -286,27 +325,18 @@ export function AutomacaoPage() {
     },
   });
 
-  const onSubmit = (data: FormData) => mutation.mutate(data);
-
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <div className="h-12 w-12 rounded-xl bg-primary/15 text-primary grid place-items-center">
-          <Bot className="h-6 w-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Nova Captura</h1>
-          <p className="text-sm text-muted-foreground">
-            Configure os parâmetros e rode a automação de descoberta via Instagram.
-          </p>
-        </div>
-      </div>
-
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="rounded-xl border border-border bg-card p-6 space-y-5"
-        id="instagram-form"
-      >
+    <FlowCard
+      icon={Search}
+      title="Descoberta via Instagram"
+      badge="Google Dorking direto"
+      bullets={[
+        "Busca perfis no Instagram via Google (site:instagram.com)",
+        "Extrai WhatsApp/Linktree direto do snippet da busca",
+        "Mais rápido, ideal quando o público já está ativo no Instagram",
+      ]}
+    >
+      <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Segmento / Categoria *" error={form.formState.errors.category?.message}>
             <Input
@@ -337,26 +367,98 @@ export function AutomacaoPage() {
 
         <SearchPreview category={category} city={city} neighborhood={neighborhood} />
 
-        <div className="flex items-center justify-between pt-2 border-t border-border">
-          <Link
-            to="/capturas"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Ver execuções →
-          </Link>
-          <Button type="submit" size="lg" className="glow-primary" disabled={mutation.isPending || anyRunning}>
-            <Rocket className="h-4 w-4" />
-            {mutation.isPending ? "Iniciando…" : anyRunning ? "Aguarde a captura atual…" : "Iniciar Captura"}
-          </Button>
-        </div>
+        <FlowFooter
+          disabled={mutation.isPending || anyRunning}
+          pending={mutation.isPending}
+          label={anyRunning ? "Aguarde a captura atual…" : "Iniciar Captura"}
+        />
       </form>
-
-      <InstaDeliveryForm anyRunning={anyRunning} />
-
-      {activeCampaign && <ActiveCampaignMonitor campaign={activeCampaign} />}
-    </div>
+    </FlowCard>
   );
 }
+
+// ─── Fluxo 2: Captura via iFood ───────────────────────────────────────────────
+
+const ifoodSchema = z.object({
+  category: z.string().min(1, "Informe a categoria"),
+  city: z.string().min(1, "Cidade obrigatória"),
+  zipCode: z.string().min(8, "CEP obrigatório (8 dígitos)"),
+  quantity: z.coerce.number().min(1).max(500),
+});
+
+type IfoodFormData = z.infer<typeof ifoodSchema>;
+
+function IfoodForm({ anyRunning }: { anyRunning: boolean }) {
+  const queryClient = useQueryClient();
+
+  const form = useForm<IfoodFormData>({
+    resolver: zodResolver(ifoodSchema),
+    defaultValues: { category: "", city: "", zipCode: "", quantity: 50 },
+  });
+
+  const mutation = useMutation({
+    mutationFn: (data: IfoodFormData) => createIfoodCampaign(data),
+    onSuccess: (campaign) => {
+      toast.success("Captura iFood iniciada!", {
+        description: `${campaign.category} em ${campaign.city} • ${campaign.quantity} leads`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      form.reset({ category: "", city: "", zipCode: "", quantity: 50 });
+    },
+    onError: (error) => {
+      toast.error("Não foi possível iniciar a captura", {
+        description: error instanceof Error ? error.message : "Tente novamente em instantes.",
+      });
+    },
+  });
+
+  return (
+    <FlowCard
+      icon={UtensilsCrossed}
+      title="Captura via iFood"
+      badge="iFood → Instagram → Enriquecimento"
+      bullets={[
+        "1. Busca restaurantes ativos no iFood pelo CEP (GeckoAPI)",
+        "2. Acha o Instagram de cada um via Google Dorking",
+        "3. Enriquece o perfil: seguidores, bio completa, links e WhatsApp",
+      ]}
+    >
+      <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Segmento / Categoria *" error={form.formState.errors.category?.message}>
+            <Input
+              list="category-list"
+              placeholder="Ex: Hamburgueria, Pizzaria…"
+              {...form.register("category")}
+              autoComplete="off"
+            />
+          </Field>
+
+          <Field label="Cidade *" error={form.formState.errors.city?.message}>
+            <Input placeholder="Ex: São Luís" {...form.register("city")} />
+          </Field>
+
+          <Field label="CEP *" error={form.formState.errors.zipCode?.message}>
+            <Input placeholder="Ex: 65000-000" {...form.register("zipCode")} />
+          </Field>
+
+          <Field label="Quantidade de leads *" error={form.formState.errors.quantity?.message}>
+            <Input type="number" min={1} max={500} {...form.register("quantity")} />
+          </Field>
+        </div>
+
+        <FlowFooter
+          disabled={mutation.isPending || anyRunning}
+          pending={mutation.isPending}
+          label={anyRunning ? "Aguarde a captura atual…" : "Iniciar Captura iFood"}
+        />
+      </form>
+    </FlowCard>
+  );
+}
+
+// ─── Fluxo 3: Captura via InstaDelivery ──────────────────────────────────────
 
 const instaDeliverySchema = z.object({
   city: z.string().min(1, "Selecione uma cidade"),
@@ -396,19 +498,18 @@ function InstaDeliveryForm({ anyRunning }: { anyRunning: boolean }) {
     },
   });
 
-  const onSubmit = (data: InstaDeliveryFormData) => mutation.mutate(data);
-
   return (
-    <div className="rounded-xl border border-border bg-card p-6 space-y-5">
-      <div className="flex items-center gap-2">
-        <Store className="h-4 w-4 text-primary" />
-        <h2 className="text-sm font-semibold">Captura via InstaDelivery</h2>
-        <span className="ml-auto text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-          Extrai nome + WhatsApp das lojas
-        </span>
-      </div>
-
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+    <FlowCard
+      icon={Store}
+      title="Captura via InstaDelivery"
+      badge="Extrai nome + WhatsApp das lojas"
+      bullets={[
+        "Raspa todas as lojas da cidade no portal InstaDelivery (scroll infinito)",
+        "Extrai WhatsApp de cada loja e busca o Instagram via Google",
+        "Leads salvos com source: instadelivery",
+      ]}
+    >
+      <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Cidade *" error={form.formState.errors.city?.message}>
             <Input
@@ -429,25 +530,47 @@ function InstaDeliveryForm({ anyRunning }: { anyRunning: boolean }) {
           </Field>
         </div>
 
-        <div className="rounded-lg border border-border bg-muted/30 p-3 text-[11px] text-muted-foreground space-y-1">
-          <p>• Raspa todas as lojas da cidade no portal InstaDelivery (scroll infinito)</p>
-          <p>• Extrai WhatsApp de cada loja e busca o Instagram via Google</p>
-          <p>• Leads salvos com <code className="bg-background px-1 rounded">source: instadelivery</code></p>
-        </div>
-
-        <div className="flex items-center justify-between pt-2 border-t border-border">
-          <Link
-            to="/capturas"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Ver execuções →
-          </Link>
-          <Button type="submit" size="lg" disabled={mutation.isPending || citiesQuery.isLoading || anyRunning}>
-            <Store className="h-4 w-4" />
-            {mutation.isPending ? "Iniciando…" : anyRunning ? "Aguarde a captura atual…" : "Iniciar Captura InstaDelivery"}
-          </Button>
-        </div>
+        <FlowFooter
+          disabled={mutation.isPending || citiesQuery.isLoading || anyRunning}
+          pending={mutation.isPending}
+          label={anyRunning ? "Aguarde a captura atual…" : "Iniciar Captura InstaDelivery"}
+        />
       </form>
+    </FlowCard>
+  );
+}
+
+// ─── Página principal ────────────────────────────────────────────────────────
+
+export function AutomacaoPage() {
+  const campaignsQuery = useQuery({
+    queryKey: ["campaigns"],
+    queryFn: listCampaigns,
+    refetchInterval: (q) => {
+      const data = q.state.data as Capture[] | undefined;
+      return data?.some((c) => c.status === "running") ? 3000 : false;
+    },
+  });
+
+  const campaigns = campaignsQuery.data ?? [];
+  const activeCampaign = campaigns.find((c) => c.status === "running")
+    ?? (campaigns[0]?.status === "done" || campaigns[0]?.status === "error" ? campaigns[0] : undefined);
+  const anyRunning = campaigns.some((c) => c.status === "running");
+
+  return (
+    <div className="p-6 max-w-2xl mx-auto space-y-4 animate-fade-in">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Automações de Captação</h1>
+        <p className="text-sm text-muted-foreground">
+          Escolha um fluxo abaixo e configure os parâmetros para rodar a automação.
+        </p>
+      </div>
+
+      <InstagramForm anyRunning={anyRunning} />
+      <IfoodForm anyRunning={anyRunning} />
+      <InstaDeliveryForm anyRunning={anyRunning} />
+
+      {activeCampaign && <ActiveCampaignMonitor campaign={activeCampaign} />}
     </div>
   );
 }

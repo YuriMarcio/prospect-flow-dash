@@ -6,9 +6,11 @@ import {
   listCampaignsController,
   getCampaignController,
   startCampaignController,
+  stopCampaignController,
   campaignleadsearchController,
   campaignleadsearchinstaController,
   campaignInstaDeliveryController,
+  campaignIfoodController,
 } from "./campaigns.controller";
 
 const require = createRequire(import.meta.url);
@@ -40,10 +42,19 @@ export async function campaignsRoutes(
     "/campaignleadsearchinsta",
     campaignleadsearchinstaController
   );
+  app.post(
+    "/campaignifood",
+    campaignIfoodController
+  );
 
   app.post(
     "/:id/start",
     startCampaignController
+  );
+
+  app.post(
+    "/:id/stop",
+    stopCampaignController
   );
 
   app.get("/instadelivery/cities", async (_req, reply) => {

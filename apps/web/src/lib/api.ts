@@ -60,6 +60,14 @@ function array(value: unknown): string[] {
   return [];
 }
 
+// bio_links vem do Instagram como [{ url: string }] — extrai só as URLs
+function bioLinkUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === "object" && item && "url" in item ? (item as { url: unknown }).url : undefined))
+    .filter((url): url is string => typeof url === "string" && url.trim().length > 0);
+}
+
 function status(value: unknown): LeadStatus {
   const allowed = ["novo", "contato", "qualificado", "negociacao", "ganho", "perdido"];
   return typeof value === "string" && allowed.includes(value) ? (value as LeadStatus) : "novo";
@@ -83,6 +91,7 @@ function captureStatus(value: unknown): Capture["status"] {
   if (value === "running") return "running";
   if (value === "done" || value === "completed" || value === "finished") return "done";
   if (value === "error" || value === "failed") return "error";
+  if (value === "cancelled") return "cancelled";
   return "queued";
 }
 
@@ -157,6 +166,7 @@ function normalizeLead(lead: ApiLead): Lead {
         ...array(lead.digital_menu),
         ...array(lead.delivery_link),
         ...array(lead.external_url),
+        ...bioLinkUrls(lead.bio_links),
       ]),
     ].filter(Boolean),
     score: number(lead.score, 50),
@@ -171,10 +181,15 @@ function normalizeLead(lead: ApiLead): Lead {
     nextFollowUp: text(lead.nextFollowUp, text(lead.next_follow_up, undefined)),
     timeline: timeline(lead.timeline),
     createdAt: typeof lead.created_at === "string" ? lead.created_at : undefined,
+    prospectingChannel: (["whatsapp", "instagram", "email"].includes(lead.prospecting_channel as string)
+      ? lead.prospecting_channel
+      : undefined) as Lead["prospectingChannel"],
+    meetingAt: typeof lead.meeting_at === "string" ? lead.meeting_at : undefined,
+    meetingNotes: text(lead.meeting_notes, undefined),
   };
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const hasBody = init?.body != null;
   const response = await fetch(`${API_URL}${path}`, {
     headers: {
@@ -225,6 +240,14 @@ export async function startCampaign(id: string) {
   return normalizeCampaign(campaign);
 }
 
+export async function stopCampaign(id: string) {
+  const campaign = await request<ApiCampaign>(`/campaigns/${id}/stop`, {
+    method: "POST",
+  });
+
+  return normalizeCampaign(campaign);
+}
+
 export async function listCampaignLogs(campaignId: string) {
   const logs = await request<ApiLog[]>(`/logs/campaign/${campaignId}`);
   return logs.map(normalizeLog);
@@ -239,6 +262,9 @@ export async function updateLead(id: string, patch: Partial<Lead>) {
   if (patch.score !== undefined) body.score = patch.score;
   if (patch.tags) body.tags = patch.tags;
   if (patch.owner) body.owner = patch.owner;
+  if (patch.prospectingChannel !== undefined) body.prospecting_channel = patch.prospectingChannel;
+  if (patch.meetingAt !== undefined) body.meeting_at = patch.meetingAt || null;
+  if (patch.meetingNotes !== undefined) body.meeting_notes = patch.meetingNotes || null;
 
   const lead = await request<ApiLead>(`/leads/${id}`, {
     method: "PATCH",
@@ -254,6 +280,19 @@ export async function deduplicateLeads(): Promise<{ removed: number }> {
 
 export function getStatusForColumn(columnId: string) {
   return statusByColumnId[columnId];
+}
+
+export async function createIfoodCampaign(input: {
+  category: string;
+  city: string;
+  zipCode: string;
+  quantity: number;
+}): Promise<Capture> {
+  const campaign = await request<ApiCampaign>("/campaigns/campaignifood", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return normalizeCampaign(campaign);
 }
 
 export async function getInstaDeliveryCities(): Promise<string[]> {

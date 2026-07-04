@@ -5,8 +5,10 @@ import {
   listCampaignsService,
   getCampaignService,
   startCampaignService,
+  stopCampaignService,
   campaignInstagramSearchService,
   campaignInstaDeliverySearchService,
+  campaignIfoodSearchService,
 } from "./campaigns.service";
 
 export async function createCampaignController(
@@ -54,6 +56,14 @@ export async function campaignInstaDeliveryController(
   return reply.status(201).send(result);
 }
 
+export async function campaignIfoodController(
+  request: FastifyRequest<{ Body: Record<string, unknown> }>,
+  reply: FastifyReply,
+) {
+  const result = await campaignIfoodSearchService(request.body);
+  return reply.status(201).send(result);
+}
+
 export async function listCampaignsController(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -75,5 +85,13 @@ export async function startCampaignController(
   reply: FastifyReply,
 ) {
   const result = await startCampaignService(request.params.id);
+  return reply.send(result);
+}
+
+export async function stopCampaignController(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply,
+) {
+  const result = await stopCampaignService(request.params.id);
   return reply.send(result);
 }

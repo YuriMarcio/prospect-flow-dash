@@ -2,6 +2,7 @@ import { chromium, BrowserContext } from "playwright";
 import * as campaignsRepository from "../../modules/campaigns/campaigns.repository";
 import * as leadsRepository from "../../modules/leads/leads.repository";
 import * as logsRepository from "../../modules/logs/logs.repository";
+import { isCancelled, cleanup } from "../../lib/cancellation";
 
 function toSlug(name: string): string {
   return name
@@ -192,6 +193,7 @@ export async function runInstaDeliveryScraping(
     let found = 0;
 
     for (const store of validStores.slice(0, limit)) {
+      if (isCancelled(campaignId)) break;
       processed++;
       try {
         // Verifica duplicata pelo nome+cidade antes de acessar a página (evita visitas desnecessárias)
@@ -260,12 +262,23 @@ export async function runInstaDeliveryScraping(
       }
     }
 
-    await campaignsRepository.updateStatus(campaignId, "done");
-    await logsRepository.create(
-      campaignId,
-      `Campanha finalizada. ${found} leads salvos de ${processed} processados.`,
-      "info",
-    );
+    const wasCancelled = isCancelled(campaignId);
+    cleanup(campaignId);
+
+    if (wasCancelled) {
+      await logsRepository.create(
+        campaignId,
+        `Captura interrompida. ${found} leads salvos de ${processed} processados.`,
+        "warn",
+      );
+    } else {
+      await campaignsRepository.updateStatus(campaignId, "done");
+      await logsRepository.create(
+        campaignId,
+        `Campanha finalizada. ${found} leads salvos de ${processed} processados.`,
+        "info",
+      );
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     await logsRepository.create(campaignId, `Erro crítico: ${message}`, "error");

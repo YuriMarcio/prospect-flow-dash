@@ -21,6 +21,9 @@ export interface Lead {
   nextFollowUp?: string;
   timeline: TimelineEvent[];
   createdAt?: string;
+  prospectingChannel?: "whatsapp" | "instagram" | "email";
+  meetingAt?: string;
+  meetingNotes?: string;
 }
 
 export interface TimelineEvent {
@@ -47,7 +50,7 @@ export interface Capture {
   quantity: number;
   delay: number;
   limit: number;
-  status: "queued" | "running" | "done" | "error";
+  status: "queued" | "running" | "done" | "error" | "cancelled";
   processed: number;
   found: number;
   errors: number;

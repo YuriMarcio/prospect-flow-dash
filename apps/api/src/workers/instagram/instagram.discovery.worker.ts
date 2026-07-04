@@ -4,6 +4,7 @@ import { runInstagramEnrichment } from "./instagram.enrichment.worker";
 import * as leadsRepository from "../../modules/leads/leads.repository";
 import * as logsRepository from "../../modules/logs/logs.repository";
 import * as campaignsRepository from "../../modules/campaigns/campaigns.repository";
+import { isCancelled, cleanup } from "../../lib/cancellation";
 
 // ---------------------------------------------------------------------------
 // LOGGER — persiste no banco E no console
@@ -146,6 +147,7 @@ export async function runInstagramDiscovery(
 
   for (const query of queries) {
     if (leadsFound.length >= quantity) break;
+    if (isCancelled(campaignId)) break;
 
     let page = 0;
     let emptyPages = 0;
@@ -153,6 +155,7 @@ export async function runInstagramDiscovery(
     await log(campaignId, `Query: ${query}`);
 
     while (leadsFound.length < quantity && emptyPages < 2) {
+      if (isCancelled(campaignId)) break;
       const results = await searchGoogle(query, page * 10);
 
       if (results.length === 0) {
@@ -211,6 +214,14 @@ export async function runInstagramDiscovery(
       page++;
       await delay(1200);
     }
+  }
+
+  const wasCancelled = isCancelled(campaignId);
+  cleanup(campaignId);
+
+  if (wasCancelled) {
+    await log(campaignId, `Captura interrompida. ${leadsFound.length} leads salvos até o momento.`, "warn");
+    return;
   }
 
   await log(campaignId, `Concluído. Total salvo: ${leadsFound.length} leads`);

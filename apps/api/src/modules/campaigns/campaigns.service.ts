@@ -1,6 +1,8 @@
 import * as campaignsRepository from "./campaigns.repository";
 import { runInstagramDiscovery } from "../../workers/instagram/instagram.discovery.worker";
 import { runInstaDeliveryScraping } from "../../workers/instadelivery/instadelivery.worker";
+import { runIfoodScraping } from "../../workers/ifood/ifood.worker";
+import { cancel } from "../../lib/cancellation";
 
 // ---------------------------------------------------------------------------
 // CRUD básico
@@ -111,8 +113,42 @@ export async function campaignInstaDeliverySearchService(data: Record<string, un
 }
 
 // ---------------------------------------------------------------------------
+// CRIAR + INICIAR IFOOD (chamado pelo endpoint POST /campaigns/campaignifood)
+// ---------------------------------------------------------------------------
+
+export async function campaignIfoodSearchService(data: Record<string, unknown>) {
+  const campaign = await campaignsRepository.create(data);
+
+  if (!campaign) {
+    throw new Error("Falha ao criar campanha no banco de dados");
+  }
+
+  runIfoodScraping(
+    campaign.id,
+    data.city as string,
+    data.zipCode as string,
+    data.category as string,
+    (data.quantity as number) ?? 50,
+  ).catch(async (err) => {
+    console.error(`[SERVICE] iFood worker falhou para campanha ${campaign.id}:`, err);
+    await campaignsRepository.updateStatus(campaign.id, "error").catch(() => {});
+  });
+
+  return campaign;
+}
+
+// ---------------------------------------------------------------------------
 // START (chamado pelo endpoint POST /campaigns/:id/start)
 // ---------------------------------------------------------------------------
+
+export async function stopCampaignService(id: string) {
+  const campaign = await campaignsRepository.findById(id);
+  if (!campaign) throw new Error("Campanha não encontrada");
+  if (campaign.status !== "running") return campaign;
+
+  cancel(id);
+  return await campaignsRepository.updateStatus(id, "cancelled");
+}
 
 export async function startCampaignService(id: string) {
   const campaign = await campaignsRepository.findById(id);
