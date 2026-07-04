@@ -141,6 +141,9 @@ function LoginPage() {
           )}
         </CardContent>
       </Card>
+      <p className="fixed bottom-2 right-3 text-[10px] text-muted-foreground/60">
+        build {__APP_COMMIT__}
+      </p>
     </div>
   );
 }

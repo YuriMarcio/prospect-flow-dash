@@ -212,6 +212,8 @@ export function Header() {
             <DropdownMenuItem onClick={handleLogout} className="text-destructive">
               Sair
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <p className="px-2 py-1 text-[10px] text-muted-foreground/60">build {__APP_COMMIT__}</p>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

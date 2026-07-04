@@ -15,4 +15,13 @@ export default defineConfig({
     server: { entry: "server" },
   },
   plugins: [nitro({ preset: "vercel" })],
+  vite: {
+    define: {
+      // A Vercel expõe o SHA do commit pro processo de build automaticamente —
+      // isso vira uma string fixa no bundle, pra dar pra ver na tela qual
+      // deploy está realmente no ar.
+      __APP_COMMIT__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "dev"),
+      __APP_BUILT_AT__: JSON.stringify(new Date().toISOString()),
+    },
+  },
 });
