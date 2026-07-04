@@ -10,3 +10,10 @@ services:
       - "3333:3333"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - delivery-net
+
+networks:
+  delivery-net:
+    external: true
