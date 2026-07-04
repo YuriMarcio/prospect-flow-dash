@@ -224,6 +224,7 @@ export interface AuthUser {
   username: string | null;
   email: string | null;
   name: string | null;
+  phone: string | null;
 }
 
 export async function login(username: string, password: string): Promise<AuthUser> {
@@ -235,6 +236,17 @@ export async function login(username: string, password: string): Promise<AuthUse
 
 export async function listUsers(): Promise<AuthUser[]> {
   return request<AuthUser[]>("/auth/users");
+}
+
+export async function getMe(): Promise<AuthUser> {
+  return request<AuthUser>("/auth/me");
+}
+
+export async function updateProfile(patch: { name?: string; phone?: string | null }): Promise<AuthUser> {
+  return request<AuthUser>("/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function loginWithGoogle(credential: string): Promise<AuthUser> {

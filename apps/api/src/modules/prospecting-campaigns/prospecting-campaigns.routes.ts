@@ -5,6 +5,7 @@ import {
   createCampaignController,
   updateCampaignController,
   toggleCampaignController,
+  deleteCampaignController,
   getCampaignStatusController,
   startCampaignSessionController,
   stopCampaignSessionController,
@@ -15,6 +16,7 @@ export async function prospectingCampaignsRoutes(app: FastifyInstance) {
   app.post("/", createCampaignController);
   app.get("/:id", getCampaignController);
   app.patch("/:id", updateCampaignController);
+  app.delete("/:id", deleteCampaignController);
   app.post("/:id/toggle", toggleCampaignController);
   app.get("/:id/status", getCampaignStatusController);
   app.post("/:id/session/start", startCampaignSessionController);

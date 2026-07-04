@@ -1,8 +1,20 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MessageCircle, Play, Settings2, Square } from "lucide-react";
+import { MessageCircle, Play, Settings2, Square, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { stopCampaignSession, type CampaignStatus } from "@/lib/prospector";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { deleteCampaign, stopCampaignSession, type CampaignStatus } from "@/lib/prospector";
 import { StartSessionDialog } from "./StartSessionDialog";
 
 function formatTime(iso: string | null): string | null {
@@ -18,12 +30,14 @@ export function BotStatusHeader({
   status,
   onConfigure,
   onConnect,
+  onDeleted,
 }: {
   campaignId: string;
   campaignName: string;
   status: CampaignStatus | undefined;
   onConfigure: () => void;
   onConnect: () => void;
+  onDeleted: () => void;
 }) {
   const queryClient = useQueryClient();
   const [startDialogOpen, setStartDialogOpen] = useState(false);
@@ -34,6 +48,16 @@ export function BotStatusHeader({
   const stopMutation = useMutation({
     mutationFn: () => stopCampaignSession(campaignId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign-status", campaignId] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteCampaign(campaignId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      toast.success(`Campanha "${campaignName}" excluída. Os leads voltaram pro pool compartilhado.`);
+      onDeleted();
+    },
+    onError: () => toast.error("Não foi possível excluir a campanha."),
   });
 
   function handlePillClick() {
@@ -120,6 +144,28 @@ export function BotStatusHeader({
           <Settings2 className="h-4 w-4" />
           Configurar campanha
         </Button>
+
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" size="icon" className="text-destructive hover:text-destructive">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir "{campaignName}"?</AlertDialogTitle>
+              <AlertDialogDescription>
+                A fila, o plano da semana e as mensagens dessa campanha são apagados. Os leads que
+                estavam nela voltam pro pool compartilhado, disponíveis pra outra campanha. Essa
+                ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => deleteMutation.mutate()}>Excluir</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       <StartSessionDialog campaignId={campaignId} open={startDialogOpen} onOpenChange={setStartDialogOpen} />

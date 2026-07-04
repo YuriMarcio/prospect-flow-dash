@@ -113,9 +113,10 @@ export async function getCampaign(id: string): Promise<ProspectingCampaign> {
 }
 
 export async function createCampaign(input: {
-  region: string;
-  segment?: string | null;
+  name: string;
   ownerUserId: string;
+  region?: string | null;
+  segment?: string | null;
   filters?: { cities: string[]; segments: string[] };
   schedule?: Schedule;
   windowStart?: string;
@@ -125,6 +126,10 @@ export async function createCampaign(input: {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function deleteCampaign(id: string): Promise<void> {
+  await request(`/prospecting-campaigns/${id}`, { method: "DELETE" });
 }
 
 export async function updateCampaign(

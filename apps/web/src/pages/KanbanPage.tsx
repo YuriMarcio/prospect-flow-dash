@@ -354,6 +354,7 @@ export function KanbanPage() {
             status={campaignStatusQuery.data}
             onConfigure={() => setConfigOpen(true)}
             onConnect={() => setConnectOpen(true)}
+            onDeleted={() => setBoardView("geral")}
           />
           <BotMetricsStrip status={campaignStatusQuery.data} />
           <BotWeekBoard

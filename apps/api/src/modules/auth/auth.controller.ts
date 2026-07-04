@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from "./auth.constants";
-import { AuthUser, listUsers, verifyCredentials, verifyGoogleLogin } from "./auth.service";
+import { AuthUser, getUserById, listUsers, updateProfile, verifyCredentials, verifyGoogleLogin } from "./auth.service";
 
 async function issueSession(user: AuthUser, reply: FastifyReply) {
   const token = await reply.jwtSign(
@@ -17,6 +17,10 @@ async function issueSession(user: AuthUser, reply: FastifyReply) {
       maxAge: SESSION_MAX_AGE_SECONDS,
     })
     .send(user);
+}
+
+function userId(request: FastifyRequest): string {
+  return (request.user as { userId: string }).userId;
 }
 
 export async function loginController(
@@ -64,11 +68,20 @@ export async function listUsersController(_request: FastifyRequest, reply: Fasti
 }
 
 export async function meController(request: FastifyRequest, reply: FastifyReply) {
-  const { userId, username, email, name } = request.user as {
-    userId: string;
-    username: string | null;
-    email: string | null;
-    name: string | null;
-  };
-  return reply.send({ id: userId, username, email, name });
+  const user = await getUserById(userId(request));
+  if (!user) return reply.status(404).send({ error: "Usuário não encontrado." });
+  return reply.send(user);
+}
+
+export async function updateProfileController(
+  request: FastifyRequest<{ Body: { name?: string; phone?: string | null } }>,
+  reply: FastifyReply,
+) {
+  const { name, phone } = request.body ?? {};
+  const patch: { name?: string; phone?: string | null } = {};
+  if (typeof name === "string" && name.trim()) patch.name = name.trim();
+  if (phone !== undefined) patch.phone = phone?.trim() || null;
+
+  const user = await updateProfile(userId(request), patch);
+  return reply.send(user);
 }

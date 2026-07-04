@@ -33,25 +33,23 @@ export function NewCampaignModal({
 }) {
   const queryClient = useQueryClient();
   const myUsername = useAuthStore((s) => s.username);
-  const [region, setRegion] = useState("");
-  const [segment, setSegment] = useState("");
+  const [name, setName] = useState("");
   const [ownerUserId, setOwnerUserId] = useState("");
 
   const usersQuery = useQuery({ queryKey: ["users"], queryFn: listUsers, enabled: open });
 
   const createMutation = useMutation({
-    mutationFn: () => createCampaign({ region: region.trim(), segment: segment.trim() || null, ownerUserId }),
+    mutationFn: () => createCampaign({ name: name.trim(), ownerUserId }),
     onSuccess: (campaign) => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       onCreated(campaign);
       onOpenChange(false);
-      setRegion("");
-      setSegment("");
+      setName("");
       setOwnerUserId("");
     },
   });
 
-  const canCreate = region.trim().length > 0 && Boolean(ownerUserId);
+  const canCreate = name.trim().length > 0 && Boolean(ownerUserId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -65,21 +63,12 @@ export function NewCampaignModal({
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Região</Label>
+            <Label>Nome da campanha</Label>
             <Input
               autoFocus
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              placeholder="ex: Ipanema - RJ"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Segmento</Label>
-            <Input
-              value={segment}
-              onChange={(e) => setSegment(e.target.value)}
-              placeholder="ex: Delivery"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="ex: Delivery Ipanema"
             />
           </div>
 

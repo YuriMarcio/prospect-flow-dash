@@ -5,6 +5,7 @@ import {
   loginController,
   logoutController,
   meController,
+  updateProfileController,
 } from "./auth.controller";
 
 export async function authRoutes(app: FastifyInstance) {
@@ -12,5 +13,6 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/google", googleLoginController);
   app.post("/logout", logoutController);
   app.get("/me", meController);
+  app.patch("/me", updateProfileController);
   app.get("/users", listUsersController);
 }

@@ -5,6 +5,7 @@ import {
   createCampaignService,
   updateCampaignService,
   toggleCampaignService,
+  deleteCampaignService,
   getCampaignStatusService,
   startCampaignSessionService,
   stopCampaignSessionService,
@@ -30,9 +31,10 @@ export async function getCampaignController(
 export async function createCampaignController(
   request: FastifyRequest<{
     Body: {
-      region: string;
-      segment?: string | null;
+      name: string;
       ownerUserId: string;
+      region?: string | null;
+      segment?: string | null;
       filters?: { cities: string[]; segments: string[] };
       schedule?: Record<string, { enabled: boolean; limit: number }>;
       windowStart?: string;
@@ -43,10 +45,17 @@ export async function createCampaignController(
 ) {
   const result = await createCampaignService({
     ...request.body,
-    segment: request.body.segment ?? null,
     createdByUserId: userId(request),
   });
   return reply.status(201).send(result);
+}
+
+export async function deleteCampaignController(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply,
+) {
+  await deleteCampaignService(request.params.id);
+  return reply.status(204).send();
 }
 
 export async function updateCampaignController(

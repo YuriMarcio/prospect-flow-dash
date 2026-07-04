@@ -2,6 +2,9 @@ import * as campaignsRepository from "./prospecting-campaigns.repository";
 import * as prospectorRepository from "../prospector/prospector.repository";
 import * as queueRepository from "../prospector/queue.repository";
 import * as messagesRepository from "../prospector/messages.repository";
+import * as planRepository from "../prospector/plan.repository";
+import * as botLogs from "../prospector/botlogs.repository";
+import * as leadsRepository from "../leads/leads.repository";
 import { getEffectiveDailyLimit, isWarmingDone } from "../../workers/prospector/warming";
 import {
   startSessionForCampaign,
@@ -20,12 +23,6 @@ const DEFAULT_SCHEDULE = {
   sab: { enabled: false, limit: 0 },
 };
 
-function formatDateBR(date: Date): string {
-  const d = String(date.getDate()).padStart(2, "0");
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  return `${d}/${m}/${date.getFullYear()}`;
-}
-
 export async function listCampaignsService() {
   return campaignsRepository.findAll();
 }
@@ -37,24 +34,23 @@ export async function getCampaignService(id: string) {
 }
 
 export async function createCampaignService(input: {
-  region: string;
-  segment: string | null;
+  name: string;
   ownerUserId: string;
   createdByUserId: string;
+  region?: string | null;
+  segment?: string | null;
   filters?: { cities: string[]; segments: string[] };
   schedule?: Record<string, { enabled: boolean; limit: number }>;
   windowStart?: string;
   windowEnd?: string;
 }) {
-  const name = `Campanha | ${input.region} | ${formatDateBR(new Date())}`;
-
   return campaignsRepository.create({
-    name,
+    name: input.name,
     ownerUserId: input.ownerUserId,
     createdByUserId: input.createdByUserId,
-    region: input.region,
-    segment: input.segment,
-    filters: input.filters ?? { cities: input.region ? [input.region] : [], segments: input.segment ? [input.segment] : [] },
+    region: input.region ?? null,
+    segment: input.segment ?? null,
+    filters: input.filters ?? { cities: [], segments: [] },
     schedule: input.schedule ?? DEFAULT_SCHEDULE,
     windowStart: input.windowStart ?? "08:00",
     windowEnd: input.windowEnd ?? "18:00",
@@ -67,6 +63,18 @@ export async function updateCampaignService(id: string, patch: Record<string, un
 
 export async function toggleCampaignService(id: string) {
   return campaignsRepository.toggleActive(id);
+}
+
+export async function deleteCampaignService(id: string) {
+  const campaign = await campaignsRepository.findById(id);
+  if (!campaign) throw new Error("Campanha não encontrada.");
+
+  await leadsRepository.releaseCampaign(id);
+  await messagesRepository.removeAllForCampaign(id);
+  await queueRepository.removeAllForCampaign(id);
+  await planRepository.removeAllForCampaign(id);
+  await botLogs.detachCampaign(id);
+  await campaignsRepository.remove(id);
 }
 
 export async function getCampaignStatusService(campaignId: string) {

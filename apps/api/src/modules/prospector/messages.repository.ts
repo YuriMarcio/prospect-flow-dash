@@ -172,3 +172,19 @@ export async function remove(id: string): Promise<void> {
   const { error } = await supabase.from("bot_messages").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
+
+export async function removeAllForCampaign(campaignId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { data: messages, error: findError } = await supabase
+    .from("bot_messages")
+    .select("id")
+    .eq("prospecting_campaign_id", campaignId);
+  if (findError) throw new Error(findError.message);
+
+  const ids = (messages ?? []).map((m: { id: string }) => m.id);
+  if (ids.length === 0) return;
+
+  await supabase.from("bot_message_blocks").delete().in("message_id", ids);
+  const { error } = await supabase.from("bot_messages").delete().in("id", ids);
+  if (error) throw new Error(error.message);
+}

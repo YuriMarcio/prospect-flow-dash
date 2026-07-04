@@ -104,6 +104,12 @@ export async function findRecentResponseTexts(sinceIso: string): Promise<string[
   return (data ?? []).map((row: { response_text: string }) => row.response_text);
 }
 
+export async function removeAllForCampaign(campaignId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("dispatch_queue").delete().eq("prospecting_campaign_id", campaignId);
+  if (error) throw new Error(error.message);
+}
+
 export async function findAllForToday(campaignId: string): Promise<DispatchQueueRow[]> {
   const supabase = getSupabase();
   const startOfDay = new Date();

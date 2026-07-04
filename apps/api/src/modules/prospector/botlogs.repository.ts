@@ -25,6 +25,15 @@ export async function findRecent(limit = 100) {
   return data;
 }
 
+export async function detachCampaign(campaignId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("bot_logs")
+    .update({ prospecting_campaign_id: null })
+    .eq("prospecting_campaign_id", campaignId);
+  if (error) console.error(`[BOT] Falha ao desvincular logs da campanha: ${error.message}`);
+}
+
 export async function findRecentByCampaign(campaignId: string, limit = 100) {
   const supabase = getSupabase();
   const { data, error } = await supabase

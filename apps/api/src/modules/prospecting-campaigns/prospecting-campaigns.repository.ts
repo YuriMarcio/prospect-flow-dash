@@ -116,3 +116,9 @@ export async function toggleActive(id: string): Promise<ProspectingCampaignRow> 
   if (!campaign) throw new Error("Campanha não encontrada.");
   return update(id, { is_active: !campaign.is_active });
 }
+
+export async function remove(id: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("prospecting_campaigns").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}

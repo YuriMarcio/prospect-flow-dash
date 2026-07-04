@@ -126,6 +126,16 @@ export async function claimForCampaign(leadId: string, campaignId: string): Prom
   return Boolean(data);
 }
 
+/** Libera de volta pro pool compartilhado todos os leads presos a uma campanha excluída. */
+export async function releaseCampaign(campaignId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("leads")
+    .update({ prospecting_campaign_id: null })
+    .eq("prospecting_campaign_id", campaignId);
+  if (error) throw new Error(error.message);
+}
+
 export async function findCampaignIdForLead(leadId: string): Promise<string | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase

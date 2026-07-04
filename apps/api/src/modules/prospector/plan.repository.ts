@@ -53,3 +53,9 @@ export async function removeMany(leadIds: string[]): Promise<void> {
   const { error } = await supabase.from("dispatch_plan").delete().in("lead_id", leadIds);
   if (error) throw new Error(error.message);
 }
+
+export async function removeAllForCampaign(campaignId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("dispatch_plan").delete().eq("prospecting_campaign_id", campaignId);
+  if (error) throw new Error(error.message);
+}
