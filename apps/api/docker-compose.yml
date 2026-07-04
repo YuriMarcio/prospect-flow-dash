@@ -1,14 +1,12 @@
 services:
   api:
     build:
-      context: .
+      context: ../..
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     env_file:
-      - apps/api/.env.docker
+      - .env.docker
     ports:
       - "3333:3333"
-    # Necessário no Linux para host.docker.internal resolver (usado em API_PUBLIC_URL,
-    # o webhook que a Evolution API chama de volta). Docker Desktop já resolve sozinho.
     extra_hosts:
       - "host.docker.internal:host-gateway"
