@@ -1,0 +1,17 @@
+# Bloco a adicionar no Caddyfile já existente na VPS (o mesmo que serve
+# evolution.62.171.180.64.sslip.io). Não substitua o Caddyfile inteiro —
+# só acrescente este bloco a ele e rode `docker exec <container_caddy> caddy reload
+# --config /etc/caddy/Caddyfile` (ou reinicie o serviço, se o Caddy não for containerizado).
+#
+# Se o Caddy roda em container Docker, ele precisa enxergar o host para alcançar
+# a API (que também está em container, publicada em 0.0.0.0:3333 no host):
+# adicione ao serviço do Caddy no compose dele:
+#   extra_hosts:
+#     - "host.docker.internal:host-gateway"
+#
+# Se o Caddy roda direto na VPS (fora de Docker), troque "host.docker.internal"
+# por "localhost" abaixo.
+
+api.62.171.180.64.sslip.io {
+    reverse_proxy host.docker.internal:3333
+}

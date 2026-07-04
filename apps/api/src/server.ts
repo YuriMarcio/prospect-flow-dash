@@ -40,10 +40,14 @@ async function bootstrap() {
       .map((origin) => origin.trim())
       .filter(Boolean);
 
+    // Previews da Vercel geram um domínio novo a cada PR (ex: leadflow-git-foo.vercel.app),
+    // então além da allow-list fixa aceitamos qualquer subdomínio *.vercel.app.
+    const isVercelOrigin = (origin: string) => /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin);
+
     // 1. Registrando CORS (allow-list, com suporte a cookies)
     app.addHook("onRequest", async (request, reply) => {
       const origin = request.headers.origin;
-      if (origin && allowedOrigins.includes(origin)) {
+      if (origin && (allowedOrigins.includes(origin) || isVercelOrigin(origin))) {
         reply.header("Access-Control-Allow-Origin", origin);
         reply.header("Access-Control-Allow-Credentials", "true");
       }
