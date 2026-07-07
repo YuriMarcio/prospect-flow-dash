@@ -6,12 +6,15 @@ export interface DispatchQueueRow {
   lead_id: string;
   channel: string;
   message_id: string | null;
+  flow_node_id: string | null;
   scheduled_at: string;
   status: "waiting" | "sending" | "sent" | "failed" | "replied";
   sent_at: string | null;
   response_text: string | null;
   response_at: string | null;
   response_classification: string | null;
+  response_intent: string | null;
+  response_ai: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -20,6 +23,45 @@ export async function insertMany(rows: Record<string, unknown>[]): Promise<void>
   const supabase = getSupabase();
   const { error } = await supabase.from("dispatch_queue").insert(rows);
   if (error) throw new Error(error.message);
+}
+
+export async function insertOne(row: Record<string, unknown>): Promise<DispatchQueueRow> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("dispatch_queue").insert([row]).select().single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+/** Cancela envios pendentes de um lead (ex.: respondeu antes do follow-up sair). */
+export async function removeWaitingForLead(leadId: string, campaignId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("dispatch_queue")
+    .delete()
+    .eq("lead_id", leadId)
+    .eq("prospecting_campaign_id", campaignId)
+    .eq("status", "waiting");
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Itens aguardando envio previstos até o fim de hoje. Diferente de
+ * countToday("waiting"), ignora follow-ups agendados para dias futuros —
+ * senão o modo "until_done" nunca consideraria a fila do dia concluída.
+ */
+export async function countWaitingDueToday(campaignId: string): Promise<number> {
+  const supabase = getSupabase();
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const { count, error } = await supabase
+    .from("dispatch_queue")
+    .select("id", { count: "exact", head: true })
+    .eq("prospecting_campaign_id", campaignId)
+    .eq("status", "waiting")
+    .lte("scheduled_at", endOfDay.toISOString());
+  if (error) throw new Error(error.message);
+  return count ?? 0;
 }
 
 export async function findDueItems(now: string, campaignId: string): Promise<DispatchQueueRow[]> {

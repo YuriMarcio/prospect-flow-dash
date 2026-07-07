@@ -31,7 +31,7 @@ import { LeadCard, type BotDispatchInfo } from "@/components/LeadCard";
 import { BotStatusHeader } from "@/components/prospector/BotStatusHeader";
 import { BotMetricsStrip } from "@/components/prospector/BotMetricsStrip";
 import { ConnectQrDialog } from "@/components/prospector/ConnectQrDialog";
-import { BotConfigModal } from "@/components/prospector/BotConfigModal";
+import { CampaignBoard } from "@/components/prospector/board/CampaignBoard";
 import { deduplicateLeads, getStatusForColumn, updateLead as updateLeadApi } from "@/lib/api";
 import { getCampaignStatus, listCampaigns, listDispatchQueue, type ProspectingCampaign } from "@/lib/prospector";
 import { BotWeekBoard } from "@/components/prospector/BotWeekBoard";
@@ -364,7 +364,7 @@ export function KanbanPage() {
           />
 
           <ConnectQrDialog open={connectOpen} onOpenChange={setConnectOpen} />
-          <BotConfigModal campaignId={activeCampaign.id} open={configOpen} onOpenChange={setConfigOpen} />
+          <CampaignBoard campaignId={activeCampaign.id} open={configOpen} onOpenChange={setConfigOpen} />
         </div>
       ) : (
         <>

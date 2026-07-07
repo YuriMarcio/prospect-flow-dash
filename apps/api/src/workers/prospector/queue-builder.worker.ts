@@ -1,12 +1,13 @@
 import * as prospectorRepository from "../../modules/prospector/prospector.repository";
-import * as messagesRepository from "../../modules/prospector/messages.repository";
 import * as queueRepository from "../../modules/prospector/queue.repository";
+import * as leadFlowStateRepository from "../../modules/prospector/lead-flow-state.repository";
 import * as planRepository from "../../modules/prospector/plan.repository";
 import * as botLogs from "../../modules/prospector/botlogs.repository";
 import * as leadsRepository from "../../modules/leads/leads.repository";
 import * as campaignsRepository from "../../modules/prospecting-campaigns/prospecting-campaigns.repository";
 import type { ProspectingCampaignRow } from "../../modules/prospecting-campaigns/prospecting-campaigns.repository";
 import { getEffectiveDailyLimit, getDispatchInterval } from "./warming";
+import { loadGraph, resolveEntryFromGraph, resolveEntryMessage } from "./flow-engine";
 
 const WEEKDAY_KEYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"] as const;
 
@@ -26,12 +27,6 @@ function parseTimeOnDate(date: Date, time: string): Date {
   const result = new Date(date);
   result.setHours(hours, minutes, 0, 0);
   return result;
-}
-
-async function pickMessage(campaignId: string) {
-  const abMessage = await messagesRepository.findNextAbTest(campaignId);
-  if (abMessage) return abMessage;
-  return messagesRepository.findActive(campaignId);
 }
 
 /**
@@ -89,23 +84,32 @@ export async function buildTodayQueue(campaign: ProspectingCampaignRow): Promise
     return { queued: 0 };
   }
 
+  const graph = await loadGraph(campaign.id);
+  if (!graph) {
+    await botLogs.create(`[${campaign.name}] Nenhum fluxo de mensagens configurado. Fila não construída.`, "warn", campaign.id);
+    return { queued: 0 };
+  }
+
   const { minIntervalMs, jitterMs } = getDispatchInterval(instance, effectiveLimit);
   const windowStart = parseTimeOnDate(today, campaign.window_start);
   const windowEnd = parseTimeOnDate(today, campaign.window_end);
 
   const rows: Record<string, unknown>[] = [];
   const claimedLeadIds: string[] = [];
+  const entryNodeByLeadId = new Map<string, string>();
+  // Usos de variantes A/B atribuídos neste build (ainda não persistidos),
+  // pra rotação distribuir entre os leads do dia.
+  const usageOverlay: Record<string, number> = {};
   let cursor = windowStart.getTime();
 
   for (const lead of selected) {
     const scheduledAt = new Date(cursor + randomJitter(jitterMs));
     if (scheduledAt.getTime() > windowEnd.getTime()) break;
 
-    const message = await pickMessage(campaign.id);
-    if (!message) {
-      await botLogs.create(`[${campaign.name}] Nenhuma mensagem ativa configurada. Pulando lead ${lead.name}.`, "warn", campaign.id);
-      cursor += minIntervalMs;
-      continue;
+    const entry = await resolveEntryFromGraph(graph, usageOverlay);
+    if (!entry) {
+      await botLogs.create(`[${campaign.name}] Fluxo sem mensagem inicial configurada. Fila não construída.`, "warn", campaign.id);
+      break;
     }
 
     const claimed = await leadsRepository.claimForCampaign(lead.id, campaign.id);
@@ -114,12 +118,15 @@ export async function buildTodayQueue(campaign: ProspectingCampaignRow): Promise
       continue;
     }
     claimedLeadIds.push(lead.id);
+    entryNodeByLeadId.set(lead.id, entry.node.id);
+    usageOverlay[entry.message.id] = (usageOverlay[entry.message.id] ?? 0) + 1;
 
     rows.push({
       prospecting_campaign_id: campaign.id,
       lead_id: lead.id,
       channel: "whatsapp",
-      message_id: message.id,
+      message_id: entry.message.id,
+      flow_node_id: entry.node.id,
       scheduled_at: scheduledAt.toISOString(),
       status: "waiting",
     });
@@ -128,6 +135,17 @@ export async function buildTodayQueue(campaign: ProspectingCampaignRow): Promise
   }
 
   await queueRepository.insertMany(rows);
+
+  for (const [leadId, nodeId] of entryNodeByLeadId) {
+    await leadFlowStateRepository.upsertState({
+      lead_id: leadId,
+      prospecting_campaign_id: campaign.id,
+      flow_id: graph.flow.id,
+      current_node_id: nodeId,
+      status: "waiting_dispatch",
+    });
+  }
+
   await planRepository.removeMany(plannedLeads.filter((l) => claimedLeadIds.includes(l.id)).map((l) => l.id));
   await botLogs.create(
     `[${campaign.name}] Fila construída: ${rows.length} leads agendados para hoje (${plannedLeads.length} planejados manualmente).`,
@@ -180,8 +198,8 @@ export async function enqueueLeadNow(leadId: string, campaignId: string): Promis
     return { ok: false, reason: "Instância WhatsApp não conectada." };
   }
 
-  const message = await pickMessage(campaignId);
-  if (!message) return { ok: false, reason: "Nenhuma mensagem ativa configurada." };
+  const entry = await resolveEntryMessage(campaignId);
+  if (!entry) return { ok: false, reason: "Nenhum fluxo com mensagem inicial configurado." };
 
   const dayConfig = campaign.schedule[WEEKDAY_KEYS[new Date().getDay()]];
   const effectiveLimit = dayConfig ? getEffectiveDailyLimit(instance, dayConfig) : 0;
@@ -199,16 +217,24 @@ export async function enqueueLeadNow(leadId: string, campaignId: string): Promis
   const claimed = await leadsRepository.claimForCampaign(leadId, campaignId);
   if (!claimed) return { ok: false, reason: "Este lead já foi reivindicado por outra campanha." };
 
-  await queueRepository.insertMany([
-    {
-      prospecting_campaign_id: campaignId,
-      lead_id: leadId,
-      channel: "whatsapp",
-      message_id: message.id,
-      scheduled_at: scheduledAt.toISOString(),
-      status: "waiting",
-    },
-  ]);
+  const row = await queueRepository.insertOne({
+    prospecting_campaign_id: campaignId,
+    lead_id: leadId,
+    channel: "whatsapp",
+    message_id: entry.message.id,
+    flow_node_id: entry.node.id,
+    scheduled_at: scheduledAt.toISOString(),
+    status: "waiting",
+  });
+
+  await leadFlowStateRepository.upsertState({
+    lead_id: leadId,
+    prospecting_campaign_id: campaignId,
+    flow_id: entry.node.flow_id,
+    current_node_id: entry.node.id,
+    status: "waiting_dispatch",
+    last_dispatch_id: row.id,
+  });
 
   await planRepository.unassign(leadId);
   await botLogs.create(`${lead.name} adicionado manualmente à fila de hoje (${campaign.name}).`, "info", campaign.id);

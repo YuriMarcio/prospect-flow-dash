@@ -13,11 +13,26 @@ export interface CampaignStatus {
   todayLimit: number;
   queueSize: number;
   activeMessage: BotMessage | null;
+  hasFlow: boolean;
+  followupCount: number;
   warmingDone: boolean;
   filters: { cities: string[]; segments: string[] };
   sessionMode: "until_done" | "custom" | null;
   sessionStartAt: string | null;
   sessionEndAt: string | null;
+}
+
+export interface CampaignAiConfig {
+  enabled: boolean;
+  auto_reply_enabled: boolean;
+  model?: string;
+}
+
+export interface CampaignNotificationConfig {
+  enabled: boolean;
+  phone: string | null;
+  notify_on: string[];
+  cooldown_minutes: number;
 }
 
 export interface DispatchPlanItem {
@@ -50,6 +65,8 @@ export interface ProspectingCampaign {
   session_mode: "until_done" | "custom" | null;
   session_start_at: string | null;
   session_end_at: string | null;
+  ai_config: CampaignAiConfig | null;
+  notification_config: CampaignNotificationConfig | null;
   created_at: string;
 }
 
@@ -134,7 +151,12 @@ export async function deleteCampaign(id: string): Promise<void> {
 
 export async function updateCampaign(
   id: string,
-  patch: Partial<Pick<ProspectingCampaign, "schedule" | "filters" | "window_start" | "window_end">>,
+  patch: Partial<
+    Pick<
+      ProspectingCampaign,
+      "schedule" | "filters" | "window_start" | "window_end" | "ai_config" | "notification_config"
+    >
+  >,
 ): Promise<ProspectingCampaign> {
   return request(`/prospecting-campaigns/${id}`, {
     method: "PATCH",

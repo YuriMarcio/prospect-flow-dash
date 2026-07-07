@@ -17,6 +17,7 @@ import { prospectingCampaignsRoutes } from "./modules/prospecting-campaigns/pros
 import { runDispatchTick } from "./workers/prospector/dispatcher.worker";
 import { buildTodayQueueForAllCampaigns } from "./workers/prospector/queue-builder.worker";
 import { runSessionTick } from "./workers/prospector/session.worker";
+import { runFlowTick } from "./workers/prospector/flow-engine";
 
 const app = Fastify({
   logger: true,
@@ -125,6 +126,7 @@ function setupProspectorScheduler() {
   setInterval(() => {
     runSessionTick().catch((err) => app.log.error({ err }, "[PROSPECTOR] Falha no session tick"));
     runDispatchTick().catch((err) => app.log.error({ err }, "[PROSPECTOR] Falha no dispatcher tick"));
+    runFlowTick().catch((err) => app.log.error({ err }, "[PROSPECTOR] Falha no flow tick"));
   }, 60_000);
 
   setInterval(() => {

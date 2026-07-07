@@ -130,7 +130,13 @@ export async function listLogsService(campaignId?: string) {
 
 export async function handleWebhookService(channel: string, payload: Record<string, unknown>) {
   if (channel === "whatsapp") {
-    await handleWhatsappWebhook(payload);
+    // O processamento pode chamar IA (alguns segundos) — solta a resposta da
+    // Evolution imediatamente e processa em background.
+    setImmediate(() => {
+      handleWhatsappWebhook(payload).catch((err) => {
+        console.error("[PROSPECTOR] Erro ao processar webhook:", err);
+      });
+    });
   }
 }
 

@@ -209,7 +209,10 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new Error(`API respondeu com erro ${response.status}`);
+    // Propaga a mensagem de erro do backend (ex.: validação do fluxo) quando houver
+    const body = await response.json().catch(() => null);
+    const message = body && typeof body.error === "string" ? body.error : null;
+    throw new Error(message ?? `API respondeu com erro ${response.status}`);
   }
 
   if (response.status === 204) {

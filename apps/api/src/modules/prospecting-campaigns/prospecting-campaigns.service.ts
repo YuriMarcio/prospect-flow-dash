@@ -5,6 +5,8 @@ import * as messagesRepository from "../prospector/messages.repository";
 import * as planRepository from "../prospector/plan.repository";
 import * as botLogs from "../prospector/botlogs.repository";
 import * as leadsRepository from "../leads/leads.repository";
+import * as leadFlowStateRepository from "../prospector/lead-flow-state.repository";
+import { loadGraph, resolveEntryFromGraph } from "../../workers/prospector/flow-engine";
 import { getEffectiveDailyLimit, isWarmingDone } from "../../workers/prospector/warming";
 import {
   startSessionForCampaign,
@@ -89,7 +91,11 @@ export async function getCampaignStatusService(campaignId: string) {
   const todayLimit = instance && dayConfig ? getEffectiveDailyLimit(instance, dayConfig) : 0;
   const todayCount = await queueRepository.countToday(campaignId, "sent");
   const queueSize = await queueRepository.countToday(campaignId, "waiting");
-  const activeMessage = await messagesRepository.findActive(campaignId);
+
+  // Mensagem inicial vem do fluxo (canvas), não mais do status "active"
+  const graph = await loadGraph(campaignId);
+  const entry = graph ? await resolveEntryFromGraph(graph) : null;
+  const followupCount = await leadFlowStateRepository.countByStatus(campaignId, "waiting_timer");
 
   return {
     connected,
@@ -97,7 +103,9 @@ export async function getCampaignStatusService(campaignId: string) {
     todayCount,
     todayLimit,
     queueSize,
-    activeMessage,
+    activeMessage: entry?.message ?? null,
+    hasFlow: Boolean(graph),
+    followupCount,
     warmingDone: instance ? isWarmingDone(instance) : true,
     filters: campaign.filters,
     sessionMode: campaign.session_mode,

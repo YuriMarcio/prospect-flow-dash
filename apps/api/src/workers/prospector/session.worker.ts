@@ -80,7 +80,9 @@ export async function checkUntilDoneCompletion(campaignId: string): Promise<void
   const campaign = await campaignsRepository.findById(campaignId);
   if (!campaign || campaign.session_mode !== "until_done" || !campaign.is_active) return;
 
-  const remaining = await queueRepository.countToday(campaignId, "waiting");
+  // Ignora follow-ups agendados pra dias futuros — senão a sessão "até
+  // terminar" nunca consideraria a fila do dia concluída.
+  const remaining = await queueRepository.countWaitingDueToday(campaignId);
   const sentSoFar = await queueRepository.countToday(campaignId, "sent");
 
   if (remaining === 0 && sentSoFar > 0) {

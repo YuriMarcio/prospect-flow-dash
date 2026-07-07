@@ -17,6 +17,17 @@ export interface ProspectingCampaignRow {
   session_mode: "until_done" | "custom" | null;
   session_start_at: string | null;
   session_end_at: string | null;
+  ai_config: {
+    enabled: boolean;
+    auto_reply_enabled: boolean;
+    model?: string;
+  } | null;
+  notification_config: {
+    enabled: boolean;
+    phone: string | null;
+    notify_on: string[];
+    cooldown_minutes: number;
+  } | null;
   created_at: string;
 }
 
@@ -47,18 +58,34 @@ export async function findActiveWithConnectedInstance(): Promise<
   Array<ProspectingCampaignRow & { instance_name: string }>
 > {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("prospecting_campaigns")
-    .select("*, bot_instances!inner(instance_name, status, owner_id)")
-    .eq("is_active", true)
-    .eq("bot_instances.channel", "whatsapp")
-    .eq("bot_instances.status", "connected");
 
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((row: any) => ({
-    ...row,
-    instance_name: row.bot_instances.instance_name,
-  }));
+  // Não há FK direta entre campanhas e instâncias (a relação é pelo owner),
+  // então o PostgREST não consegue fazer o embed — juntamos em memória.
+  const [campaignsResult, instancesResult] = await Promise.all([
+    supabase.from("prospecting_campaigns").select("*").eq("is_active", true),
+    supabase
+      .from("bot_instances")
+      .select("owner_id, instance_name")
+      .eq("channel", "whatsapp")
+      .eq("status", "connected"),
+  ]);
+
+  if (campaignsResult.error) throw new Error(campaignsResult.error.message);
+  if (instancesResult.error) throw new Error(instancesResult.error.message);
+
+  const instanceByOwner = new Map(
+    (instancesResult.data ?? []).map((row: { owner_id: string; instance_name: string }) => [
+      row.owner_id,
+      row.instance_name,
+    ]),
+  );
+
+  return (campaignsResult.data ?? [])
+    .filter((campaign: ProspectingCampaignRow) => instanceByOwner.has(campaign.owner_user_id))
+    .map((campaign: ProspectingCampaignRow) => ({
+      ...campaign,
+      instance_name: instanceByOwner.get(campaign.owner_user_id)!,
+    }));
 }
 
 export async function create(input: {

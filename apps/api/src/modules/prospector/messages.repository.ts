@@ -53,33 +53,6 @@ export async function findById(id: string): Promise<BotMessageRow | null> {
   return data ? sortBlocks(data) : null;
 }
 
-export async function findActive(campaignId: string): Promise<BotMessageRow | null> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("bot_messages")
-    .select(SELECT_WITH_BLOCKS)
-    .eq("status", "active")
-    .eq("prospecting_campaign_id", campaignId)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  return data ? sortBlocks(data) : null;
-}
-
-export async function findNextAbTest(campaignId: string): Promise<BotMessageRow | null> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("bot_messages")
-    .select(SELECT_WITH_BLOCKS)
-    .eq("status", "ab-test")
-    .eq("prospecting_campaign_id", campaignId)
-    .order("created_at", { ascending: true });
-
-  if (error) throw new Error(error.message);
-  const found = (data ?? []).find((m: BotMessageRow) => (m.ab_used_count ?? 0) < (m.ab_limit ?? 0));
-  return found ? sortBlocks(found) : null;
-}
-
 async function replaceBlocks(
   messageId: string,
   blocks: Array<{ type: string; content: string; caption?: string | null }>,
