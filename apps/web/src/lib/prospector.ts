@@ -6,6 +6,12 @@ export interface InstanceStatus {
   warmingDone: boolean;
 }
 
+export interface CampaignForecast {
+  intervalMs: number | null;
+  queueRemaining: number;
+  estimatedFinishAt: string | null;
+}
+
 export interface CampaignStatus {
   connected: boolean;
   is_active: boolean;
@@ -20,6 +26,7 @@ export interface CampaignStatus {
   sessionMode: "until_done" | "custom" | null;
   sessionStartAt: string | null;
   sessionEndAt: string | null;
+  forecast: CampaignForecast;
 }
 
 export interface CampaignAiConfig {
@@ -184,6 +191,20 @@ export async function startCampaignSession(
 
 export async function stopCampaignSession(id: string): Promise<ProspectingCampaign> {
   return request(`/prospecting-campaigns/${id}/session/stop`, { method: "POST" });
+}
+
+/** Remove o vínculo de todos os leads da campanha e cancela envios pendentes. */
+export async function clearCampaignLeads(id: string): Promise<{ ok: boolean }> {
+  return request(`/prospecting-campaigns/${id}/leads/clear`, { method: "POST" });
+}
+
+export interface LeadCity {
+  city: string;
+  count: number;
+}
+
+export async function listLeadCities(): Promise<LeadCity[]> {
+  return request("/leads/cities");
 }
 
 // ─── Mensagens (por campanha) ─────────────────────────────────────────────────

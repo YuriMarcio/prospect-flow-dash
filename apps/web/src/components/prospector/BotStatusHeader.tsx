@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MessageCircle, Play, Settings2, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -15,7 +14,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { deleteCampaign, stopCampaignSession, type CampaignStatus } from "@/lib/prospector";
-import { StartSessionDialog } from "./StartSessionDialog";
 
 function formatTime(iso: string | null): string | null {
   if (!iso) return null;
@@ -35,12 +33,11 @@ export function BotStatusHeader({
   campaignId: string;
   campaignName: string;
   status: CampaignStatus | undefined;
-  onConfigure: () => void;
+  onConfigure: (tab?: string) => void;
   onConnect: () => void;
   onDeleted: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [startDialogOpen, setStartDialogOpen] = useState(false);
 
   const connected = status?.connected ?? false;
   const isActive = status?.is_active ?? false;
@@ -54,7 +51,9 @@ export function BotStatusHeader({
     mutationFn: () => deleteCampaign(campaignId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-      toast.success(`Campanha "${campaignName}" excluída. Os leads voltaram pro pool compartilhado.`);
+      toast.success(
+        `Campanha "${campaignName}" excluída. Os leads voltaram pro pool compartilhado.`,
+      );
       onDeleted();
     },
     onError: () => toast.error("Não foi possível excluir a campanha."),
@@ -63,7 +62,8 @@ export function BotStatusHeader({
   function handlePillClick() {
     if (!connected) return onConnect();
     if (isActive) return stopMutation.mutate();
-    setStartDialogOpen(true);
+    // Iniciar acontece dentro do board, na aba de execução (com previsão e avisos)
+    onConfigure("execucao");
   }
 
   const endTime = formatTime(status?.sessionEndAt ?? null);
@@ -123,7 +123,7 @@ export function BotStatusHeader({
         )}
 
         {connected && !isActive && (
-          <Button onClick={() => setStartDialogOpen(true)}>
+          <Button onClick={() => onConfigure("execucao")}>
             <Play className="h-4 w-4" />
             Iniciar bot
           </Button>
@@ -140,14 +140,18 @@ export function BotStatusHeader({
           </Button>
         )}
 
-        <Button variant="outline" onClick={onConfigure}>
+        <Button variant="outline" onClick={() => onConfigure()}>
           <Settings2 className="h-4 w-4" />
           Configurar campanha
         </Button>
 
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="outline" size="icon" className="text-destructive hover:text-destructive">
+            <Button
+              variant="outline"
+              size="icon"
+              className="text-destructive hover:text-destructive"
+            >
               <Trash2 className="h-4 w-4" />
             </Button>
           </AlertDialogTrigger>
@@ -167,8 +171,6 @@ export function BotStatusHeader({
           </AlertDialogContent>
         </AlertDialog>
       </div>
-
-      <StartSessionDialog campaignId={campaignId} open={startDialogOpen} onOpenChange={setStartDialogOpen} />
     </div>
   );
 }

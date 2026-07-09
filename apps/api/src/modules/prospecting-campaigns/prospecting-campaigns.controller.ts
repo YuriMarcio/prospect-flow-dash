@@ -9,6 +9,7 @@ import {
   getCampaignStatusService,
   startCampaignSessionService,
   stopCampaignSessionService,
+  clearCampaignLeadsService,
 } from "./prospecting-campaigns.service";
 
 function userId(request: FastifyRequest): string {
@@ -98,5 +99,13 @@ export async function stopCampaignSessionController(
   reply: FastifyReply,
 ) {
   const result = await stopCampaignSessionService(request.params.id);
+  return reply.send(result);
+}
+
+export async function clearCampaignLeadsController(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply,
+) {
+  const result = await clearCampaignLeadsService(request.params.id);
   return reply.send(result);
 }

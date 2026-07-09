@@ -4,6 +4,10 @@ export async function listLeadsService() {
   return await leadsRepository.findAll();
 }
 
+export async function listCitiesService() {
+  return await leadsRepository.listDistinctCities();
+}
+
 export async function getLeadService(id: string) {
   return await leadsRepository.findById(id);
 }

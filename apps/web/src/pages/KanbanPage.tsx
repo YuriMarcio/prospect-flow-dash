@@ -110,7 +110,7 @@ export function KanbanPage() {
   const [filterDays, setFilterDays] = useState("all");
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
-  const [configOpen, setConfigOpen] = useState(false);
+  const [configBoard, setConfigBoard] = useState<{ open: boolean; tab?: string }>({ open: false });
   const [boardView, setBoardView] = useState<string>("geral");
   const [newCampaignOpen, setNewCampaignOpen] = useState(false);
 
@@ -352,7 +352,7 @@ export function KanbanPage() {
             campaignId={activeCampaign.id}
             campaignName={activeCampaign.name}
             status={campaignStatusQuery.data}
-            onConfigure={() => setConfigOpen(true)}
+            onConfigure={(tab) => setConfigBoard({ open: true, tab })}
             onConnect={() => setConnectOpen(true)}
             onDeleted={() => setBoardView("geral")}
           />
@@ -364,7 +364,12 @@ export function KanbanPage() {
           />
 
           <ConnectQrDialog open={connectOpen} onOpenChange={setConnectOpen} />
-          <CampaignBoard campaignId={activeCampaign.id} open={configOpen} onOpenChange={setConfigOpen} />
+          <CampaignBoard
+            campaignId={activeCampaign.id}
+            open={configBoard.open}
+            onOpenChange={(open) => setConfigBoard((prev) => ({ ...prev, open }))}
+            initialTab={configBoard.tab}
+          />
         </div>
       ) : (
         <>

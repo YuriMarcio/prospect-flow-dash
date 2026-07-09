@@ -163,6 +163,9 @@ export async function assignLeadToDayService(leadId: string, date: string, campa
 
   const lead = await leadsRepository.findById(leadId);
   if (!lead?.whatsapp) return { ok: false, reason: "Lead sem WhatsApp cadastrado." };
+  if (lead.status !== "novo") {
+    return { ok: false, reason: 'Só leads em "A Prospectar" podem entrar na fila do bot.' };
+  }
 
   await planRepository.assign(leadId, date, campaignId);
   return { ok: true };

@@ -32,6 +32,17 @@ export async function insertOne(row: Record<string, unknown>): Promise<DispatchQ
   return data;
 }
 
+/** Cancela todos os envios pendentes de uma campanha (botão "Limpar leads"). */
+export async function removeWaitingForCampaign(campaignId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("dispatch_queue")
+    .delete()
+    .eq("prospecting_campaign_id", campaignId)
+    .eq("status", "waiting");
+  if (error) throw new Error(error.message);
+}
+
 /** Cancela envios pendentes de um lead (ex.: respondeu antes do follow-up sair). */
 export async function removeWaitingForLead(leadId: string, campaignId: string): Promise<void> {
   const supabase = getSupabase();

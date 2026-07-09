@@ -9,6 +9,7 @@ import {
   getCampaignStatusController,
   startCampaignSessionController,
   stopCampaignSessionController,
+  clearCampaignLeadsController,
 } from "./prospecting-campaigns.controller";
 import {
   getFlowController,
@@ -29,6 +30,7 @@ export async function prospectingCampaignsRoutes(app: FastifyInstance) {
   app.get("/:id/status", getCampaignStatusController);
   app.post("/:id/session/start", startCampaignSessionController);
   app.post("/:id/session/stop", stopCampaignSessionController);
+  app.post("/:id/leads/clear", clearCampaignLeadsController);
 
   // Fluxo de mensagens (Visual Flow Builder)
   app.get("/:id/flow", getFlowController);

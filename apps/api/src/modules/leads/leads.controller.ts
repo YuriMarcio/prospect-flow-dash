@@ -1,8 +1,13 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { listLeadsService, getLeadService, updateLeadService, deduplicateLeadsService } from "./leads.service";
+import { listLeadsService, getLeadService, updateLeadService, deduplicateLeadsService, listCitiesService } from "./leads.service";
 
 export async function listLeadsController(request: FastifyRequest, reply: FastifyReply) {
   const result = await listLeadsService();
+  return reply.send(result);
+}
+
+export async function listCitiesController(_request: FastifyRequest, reply: FastifyReply) {
+  const result = await listCitiesService();
   return reply.send(result);
 }
 

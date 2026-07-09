@@ -106,6 +106,17 @@ export async function updateState(id: string, patch: Record<string, unknown>): P
   if (error) throw new Error(error.message);
 }
 
+/** Para o fluxo de todos os leads da campanha (botão "Limpar leads"). */
+export async function stopAllForCampaign(campaignId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("lead_flow_states")
+    .update({ status: "stopped", updated_at: new Date().toISOString() })
+    .eq("prospecting_campaign_id", campaignId)
+    .in("status", ["active", "waiting_dispatch", "waiting_timer", "processing"]);
+  if (error) throw new Error(error.message);
+}
+
 export async function countByStatus(campaignId: string, status: LeadFlowStatus): Promise<number> {
   const supabase = getSupabase();
   const { count, error } = await supabase

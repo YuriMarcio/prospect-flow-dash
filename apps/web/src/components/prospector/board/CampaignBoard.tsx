@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCampaign } from "@/lib/prospector";
 import { FlowCanvas } from "./flow/FlowCanvas";
-import { AgendaLimitsTab } from "./AgendaLimitsTab";
+import { ExecutionTab } from "./ExecutionTab";
 import { AiTab } from "./AiTab";
 import { NotificationsTab } from "./NotificationsTab";
 
@@ -17,10 +17,12 @@ export function CampaignBoard({
   campaignId,
   open,
   onOpenChange,
+  initialTab,
 }: {
   campaignId: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  initialTab?: string;
 }) {
   const campaignQuery = useQuery({
     queryKey: ["campaign", campaignId],
@@ -51,10 +53,10 @@ export function CampaignBoard({
         </DialogHeader>
 
         {campaign ? (
-          <Tabs defaultValue="fluxo" className="flex min-h-0 flex-1 flex-col">
+          <Tabs defaultValue={initialTab ?? "fluxo"} className="flex min-h-0 flex-1 flex-col">
             <TabsList className="mx-4 mt-3 w-fit shrink-0">
               <TabsTrigger value="fluxo">Fluxo de mensagens</TabsTrigger>
-              <TabsTrigger value="agenda">Agenda & limites</TabsTrigger>
+              <TabsTrigger value="execucao">Execução & agenda</TabsTrigger>
               <TabsTrigger value="ia">IA & respostas</TabsTrigger>
               <TabsTrigger value="notificacoes">Notificações</TabsTrigger>
             </TabsList>
@@ -69,11 +71,11 @@ export function CampaignBoard({
             </TabsContent>
 
             <TabsContent
-              value="agenda"
+              value="execucao"
               forceMount
               className="mt-3 min-h-0 flex-1 overflow-y-auto border-t border-border p-4 data-[state=inactive]:hidden"
             >
-              <AgendaLimitsTab campaign={campaign} />
+              <ExecutionTab campaign={campaign} />
             </TabsContent>
 
             <TabsContent

@@ -81,7 +81,9 @@ export function NewCampaignModal({
               <SelectContent>
                 {(usersQuery.data ?? []).map((user) => (
                   <SelectItem key={user.id} value={user.id}>
-                    {user.username === myUsername ? "Eu" : user.name ?? user.username ?? user.email ?? "—"}
+                    {user.username === myUsername
+                      ? "Eu"
+                      : (user.name ?? user.username ?? user.email ?? "—")}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -101,7 +103,10 @@ export function NewCampaignModal({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={() => createMutation.mutate()} disabled={!canCreate || createMutation.isPending}>
+          <Button
+            onClick={() => createMutation.mutate()}
+            disabled={!canCreate || createMutation.isPending}
+          >
             {createMutation.isPending ? "Criando…" : "Criar campanha"}
           </Button>
         </DialogFooter>

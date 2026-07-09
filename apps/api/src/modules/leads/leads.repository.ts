@@ -31,6 +31,35 @@ export async function findById(id: string) {
   return data;
 }
 
+/**
+ * Cidades distintas dos leads, com contagem — alimenta o autocomplete do
+ * filtro de campanha. Variações de grafia (acento/caixa) são agrupadas pela
+ * forma normalizada; a grafia exibida é a mais frequente.
+ */
+export async function listDistinctCities(): Promise<Array<{ city: string; count: number }>> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("leads").select("city").not("city", "is", null);
+  if (error) throw new Error(error.message);
+
+  const groups = new Map<string, { count: number; spellings: Map<string, number> }>();
+  for (const row of (data ?? []) as Array<{ city: string }>) {
+    const city = row.city?.trim();
+    if (!city) continue;
+    const key = normalizeForMatch(city);
+    const group = groups.get(key) ?? { count: 0, spellings: new Map() };
+    group.count++;
+    group.spellings.set(city, (group.spellings.get(city) ?? 0) + 1);
+    groups.set(key, group);
+  }
+
+  return [...groups.values()]
+    .map((group) => ({
+      city: [...group.spellings.entries()].sort((a, b) => b[1] - a[1])[0][0],
+      count: group.count,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
 export async function findByWhatsapp(whatsapp: string) {
   const digits = whatsapp.replace(/\D/g, "");
   if (!digits) return null;

@@ -7,7 +7,7 @@ import * as botLogs from "../prospector/botlogs.repository";
 import * as leadsRepository from "../leads/leads.repository";
 import * as leadFlowStateRepository from "../prospector/lead-flow-state.repository";
 import { loadGraph, resolveEntryFromGraph } from "../../workers/prospector/flow-engine";
-import { getEffectiveDailyLimit, isWarmingDone } from "../../workers/prospector/warming";
+import { getDispatchInterval, getEffectiveDailyLimit, isWarmingDone } from "../../workers/prospector/warming";
 import {
   startSessionForCampaign,
   stopSessionForCampaign,
@@ -97,7 +97,22 @@ export async function getCampaignStatusService(campaignId: string) {
   const entry = graph ? await resolveEntryFromGraph(graph) : null;
   const followupCount = await leadFlowStateRepository.countByStatus(campaignId, "waiting_timer");
 
+  // Previsão de término: intervalo efetivo + último envio agendado para hoje
+  const intervalMs = instance ? getDispatchInterval(instance, todayLimit).minIntervalMs : null;
+  const queueRemaining = await queueRepository.countWaitingDueToday(campaignId);
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+  const todayRows = await queueRepository.findAllForToday(campaignId);
+  const lastWaiting = todayRows
+    .filter((row) => row.status === "waiting" && new Date(row.scheduled_at) <= endOfDay)
+    .at(-1);
+
   return {
+    forecast: {
+      intervalMs,
+      queueRemaining,
+      estimatedFinishAt: lastWaiting?.scheduled_at ?? null,
+    },
     connected,
     is_active: campaign.is_active,
     todayCount,
@@ -112,6 +127,24 @@ export async function getCampaignStatusService(campaignId: string) {
     sessionStartAt: campaign.session_start_at,
     sessionEndAt: campaign.session_end_at,
   };
+}
+
+/**
+ * "Limpar leads da campanha": remove o vínculo dos leads e cancela envios
+ * pendentes. Status/coluna dos leads não mudam; o histórico de enviados e
+ * respondidos permanece na dispatch_queue.
+ */
+export async function clearCampaignLeadsService(campaignId: string) {
+  const campaign = await campaignsRepository.findById(campaignId);
+  if (!campaign) throw new Error("Campanha não encontrada.");
+
+  await queueRepository.removeWaitingForCampaign(campaignId);
+  await planRepository.removeAllForCampaign(campaignId);
+  await leadFlowStateRepository.stopAllForCampaign(campaignId);
+  await leadsRepository.releaseCampaign(campaignId);
+
+  await botLogs.create("Leads da campanha liberados (vínculo removido, envios pendentes cancelados).", "info", campaignId);
+  return { ok: true };
 }
 
 export { startSessionForCampaign as startCampaignSessionService, stopSessionForCampaign as stopCampaignSessionService };
