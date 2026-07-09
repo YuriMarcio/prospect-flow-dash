@@ -29,7 +29,7 @@ import { useNotificationsStore } from "@/store/notifications";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { LeadCard, type BotDispatchInfo } from "@/components/LeadCard";
 import { BotStatusHeader } from "@/components/prospector/BotStatusHeader";
-import { BotMetricsStrip } from "@/components/prospector/BotMetricsStrip";
+import { CampaignMetricsPanel } from "@/components/prospector/CampaignMetricsPanel";
 import { ConnectQrDialog } from "@/components/prospector/ConnectQrDialog";
 import { CampaignBoard } from "@/components/prospector/board/CampaignBoard";
 import { deduplicateLeads, getStatusForColumn, updateLead as updateLeadApi } from "@/lib/api";
@@ -356,7 +356,7 @@ export function KanbanPage() {
             onConnect={() => setConnectOpen(true)}
             onDeleted={() => setBoardView("geral")}
           />
-          <BotMetricsStrip status={campaignStatusQuery.data} />
+          <CampaignMetricsPanel campaignId={activeCampaign.id} status={campaignStatusQuery.data} />
           <BotWeekBoard
             campaignId={activeCampaign.id}
             leads={leads}

@@ -157,6 +157,25 @@ export async function findRecentResponseTexts(sinceIso: string): Promise<string[
   return (data ?? []).map((row: { response_text: string }) => row.response_text);
 }
 
+export interface MetricsRow {
+  status: string;
+  response_intent: string | null;
+  response_ai: { prontidao_para_reuniao?: string } | null;
+  sent_at: string | null;
+  response_at: string | null;
+}
+
+/** Colunas mínimas de todas as linhas da campanha, para agregar métricas. */
+export async function findMetricsRows(campaignId: string): Promise<MetricsRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("dispatch_queue")
+    .select("status, response_intent, response_ai, sent_at, response_at")
+    .eq("prospecting_campaign_id", campaignId);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
 export async function removeAllForCampaign(campaignId: string): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("dispatch_queue").delete().eq("prospecting_campaign_id", campaignId);

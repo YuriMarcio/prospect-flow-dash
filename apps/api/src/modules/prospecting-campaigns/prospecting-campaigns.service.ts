@@ -130,6 +130,64 @@ export async function getCampaignStatusService(campaignId: string) {
 }
 
 /**
+ * Métricas acumuladas da campanha (painel do Kanban): totais de envio e
+ * resposta, taxa de resposta real, tempo médio de resposta, intenções
+ * detectadas pela IA e oportunidades quentes.
+ */
+export async function getCampaignMetricsService(campaignId: string) {
+  const campaign = await campaignsRepository.findById(campaignId);
+  if (!campaign) throw new Error("Campanha não encontrada.");
+
+  const rows = await queueRepository.findMetricsRows(campaignId);
+
+  let sent = 0;
+  let replied = 0;
+  let failed = 0;
+  let hotLeads = 0;
+  let responseTimeSumMs = 0;
+  let responseTimeCount = 0;
+  const intents: Record<string, number> = {};
+
+  for (const row of rows) {
+    if (row.status === "sent" || row.status === "replied") sent++;
+    if (row.status === "failed") failed++;
+    if (row.status === "replied") {
+      replied++;
+      if (row.sent_at && row.response_at) {
+        const elapsed = new Date(row.response_at).getTime() - new Date(row.sent_at).getTime();
+        if (elapsed > 0) {
+          responseTimeSumMs += elapsed;
+          responseTimeCount++;
+        }
+      }
+    }
+    if (row.response_intent) {
+      intents[row.response_intent] = (intents[row.response_intent] ?? 0) + 1;
+    }
+    if (row.response_ai?.prontidao_para_reuniao === "alta") hotLeads++;
+  }
+
+  const [inNegotiation, followupsPending] = await Promise.all([
+    leadsRepository.countByCampaignAndStatus(campaignId, "negociacao"),
+    leadFlowStateRepository.countByStatus(campaignId, "waiting_timer"),
+  ]);
+
+  return {
+    total: {
+      sent,
+      replied,
+      responseRate: sent > 0 ? Math.round((replied / sent) * 100) : 0,
+      failed,
+      inNegotiation,
+      followupsPending,
+    },
+    avgResponseMs: responseTimeCount > 0 ? Math.round(responseTimeSumMs / responseTimeCount) : null,
+    intents,
+    hotLeads,
+  };
+}
+
+/**
  * "Limpar leads da campanha": remove o vínculo dos leads e cancela envios
  * pendentes. Status/coluna dos leads não mudam; o histórico de enviados e
  * respondidos permanece na dispatch_queue.

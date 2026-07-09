@@ -10,6 +10,7 @@ import {
   startCampaignSessionController,
   stopCampaignSessionController,
   clearCampaignLeadsController,
+  getCampaignMetricsController,
 } from "./prospecting-campaigns.controller";
 import {
   getFlowController,
@@ -28,6 +29,7 @@ export async function prospectingCampaignsRoutes(app: FastifyInstance) {
   app.delete("/:id", deleteCampaignController);
   app.post("/:id/toggle", toggleCampaignController);
   app.get("/:id/status", getCampaignStatusController);
+  app.get("/:id/metrics", getCampaignMetricsController);
   app.post("/:id/session/start", startCampaignSessionController);
   app.post("/:id/session/stop", stopCampaignSessionController);
   app.post("/:id/leads/clear", clearCampaignLeadsController);

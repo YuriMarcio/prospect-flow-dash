@@ -31,6 +31,17 @@ export async function findById(id: string) {
   return data;
 }
 
+export async function countByCampaignAndStatus(campaignId: string, status: string): Promise<number> {
+  const supabase = getSupabase();
+  const { count, error } = await supabase
+    .from("leads")
+    .select("id", { count: "exact", head: true })
+    .eq("prospecting_campaign_id", campaignId)
+    .eq("status", status);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 /**
  * Cidades distintas dos leads, com contagem — alimenta o autocomplete do
  * filtro de campanha. Variações de grafia (acento/caixa) são agrupadas pela

@@ -198,6 +198,24 @@ export async function clearCampaignLeads(id: string): Promise<{ ok: boolean }> {
   return request(`/prospecting-campaigns/${id}/leads/clear`, { method: "POST" });
 }
 
+export interface CampaignMetrics {
+  total: {
+    sent: number;
+    replied: number;
+    responseRate: number;
+    failed: number;
+    inNegotiation: number;
+    followupsPending: number;
+  };
+  avgResponseMs: number | null;
+  intents: Record<string, number>;
+  hotLeads: number;
+}
+
+export async function getCampaignMetrics(id: string): Promise<CampaignMetrics> {
+  return request(`/prospecting-campaigns/${id}/metrics`);
+}
+
 export interface LeadCity {
   city: string;
   count: number;
