@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   useDraggable,
@@ -10,7 +10,7 @@ import {
   closestCenter,
 } from "@dnd-kit/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Eraser, ListRestart, Search, Shuffle, User } from "lucide-react";
+import { AlertTriangle, Eraser, Search, User } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -78,9 +78,13 @@ function formatDayLabel(date: Date): string {
 }
 
 function DraggableChip({ lead, botDispatch }: { lead: Lead; botDispatch?: BotDispatchInfo }) {
+  // Já enviado/enviando: mover o card não cancela o disparo real, então trava
+  // o arraste pra não criar um card fantasma duplicado no dia de destino.
+  const locked = Boolean(botDispatch && botDispatch.status !== "waiting");
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
     data: { lead },
+    disabled: locked,
   });
 
   return (
@@ -88,7 +92,8 @@ function DraggableChip({ lead, botDispatch }: { lead: Lead; botDispatch?: BotDis
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className={`touch-none ${isDragging ? "opacity-30" : ""}`}
+      title={locked ? "Já enviado — não pode ser movido" : undefined}
+      className={`touch-none ${isDragging ? "opacity-30" : ""} ${locked ? "cursor-not-allowed" : ""}`}
     >
       <LeadCard lead={lead} botDispatch={botDispatch} />
     </div>
@@ -264,108 +269,65 @@ export function BotWeekBoard({
 
   const unassignMutation = useMutation({
     mutationFn: unassignLeadFromDay,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bot-plan", campaignId] }),
-  });
-
-  const distributeMutation = useMutation({
-    mutationFn: async () => {
-      const remainingPool = [...pool];
-      const assignments: { leadId: string; date: string }[] = [];
-
-      for (const day of days) {
-        let openSlots = day.limit - leadIdsForDay(day.dateKey).length;
-        while (openSlots > 0 && remainingPool.length > 0) {
-          const lead = remainingPool.shift()!;
-          assignments.push({ leadId: lead.id, date: day.dateKey });
-          openSlots--;
-        }
-      }
-
-      for (const assignment of assignments) {
-        await assignLeadToDay({ ...assignment, campaignId });
-      }
-      return { assigned: assignments.length, leftover: remainingPool.length };
-    },
-    onSuccess: ({ assigned, leftover }) => {
-      if (assigned === 0) {
-        toast.info(
-          "Nenhuma vaga disponível nos dias configurados — ajuste o limite na aba Agenda.",
-        );
-      } else {
-        toast.success(
-          leftover > 0
-            ? `${assigned} leads distribuídos. ${leftover} ficaram em Disponíveis (limite do dia atingido).`
-            : `${assigned} leads distribuídos pela semana.`,
-        );
-      }
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bot-plan", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["bot-queue", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-status", campaignId] });
     },
-    onError: () => toast.error("Não foi possível distribuir os leads."),
   });
 
   /**
-   * Rebalanceia os leads já planejados entre os dias, respeitando o limite
-   * seguro de cada dia (min(limite, 30)). Excedente que não couber na semana
-   * volta para "Disponíveis". O que já entrou na fila de hoje não se move.
+   * Distribuição automática em segundo plano: sempre que aparece lead novo em
+   * "Disponíveis" com vaga sobrando (respeitando o limite seguro de cada dia),
+   * ele já entra no melhor dia sozinho — sem precisar clicar em nada. Um lead
+   * só é tentado uma vez (sucesso ou falha); cards já movidos manualmente
+   * nunca são tocados por aqui, e o usuário pode sempre arrastar por cima.
    */
-  const reorganizeMutation = useMutation({
-    mutationFn: async () => {
-      const used = new Map<string, number>();
-      for (const day of days) {
-        used.set(
-          day.dateKey,
-          day.dateKey === todayKey ? Object.keys(botDispatchByLeadId).length : 0,
-        );
-      }
+  const autoAssignedRef = useRef<Set<string>>(new Set());
 
-      const plannedInOrder: DispatchPlanItem[] = days.flatMap((day) =>
-        plan.filter((p) => p.planned_date === day.dateKey),
-      );
-
-      const moves: { leadId: string; date: string }[] = [];
-      const overflow: string[] = [];
-
-      for (const item of plannedInOrder) {
-        const target = days.find((day) => {
-          const cap = Math.min(day.limit, BAN_RISK_LIMIT);
-          return (used.get(day.dateKey) ?? 0) < cap;
-        });
-        if (!target) {
-          overflow.push(item.lead_id);
-          continue;
-        }
-        used.set(target.dateKey, (used.get(target.dateKey) ?? 0) + 1);
-        if (target.dateKey !== item.planned_date) {
-          moves.push({ leadId: item.lead_id, date: target.dateKey });
-        }
+  const autoDistributeMutation = useMutation({
+    mutationFn: async (assignments: { leadId: string; date: string }[]) => {
+      let assigned = 0;
+      for (const assignment of assignments) {
+        const result = await assignLeadToDay({ ...assignment, campaignId });
+        if (result.ok) assigned++;
       }
-
-      let failed = 0;
-      for (const move of moves) {
-        const result = await assignLeadToDay({ ...move, campaignId });
-        if (!result.ok) failed++;
-      }
-      for (const leadId of overflow) {
-        await unassignLeadFromDay(leadId);
-      }
-      return { moved: moves.length - failed, overflow: overflow.length, failed };
+      return assigned;
     },
-    onSuccess: ({ moved, overflow, failed }) => {
-      if (moved === 0 && overflow === 0) {
-        toast.info("Nada para reorganizar — os dias já respeitam os limites seguros.");
-      } else {
+    onSuccess: (assigned) => {
+      if (assigned > 0) {
         toast.success(
-          `${moved} lead(s) remanejados${overflow > 0 ? `, ${overflow} devolvidos a Disponíveis (não coube na semana)` : ""}${failed > 0 ? `, ${failed} falharam` : ""}.`,
+          `${assigned} lead${assigned > 1 ? "s" : ""} distribuído${assigned > 1 ? "s" : ""} automaticamente pela semana.`,
         );
       }
       queryClient.invalidateQueries({ queryKey: ["bot-plan", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["bot-queue", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-status", campaignId] });
     },
-    onError: () => toast.error("Não foi possível reorganizar os leads."),
   });
+
+  useEffect(() => {
+    if (days.length === 0 || autoDistributeMutation.isPending) return;
+
+    const candidates = pool.filter((lead) => !autoAssignedRef.current.has(lead.id));
+    if (candidates.length === 0) return;
+
+    const used = new Map<string, number>();
+    for (const day of days) used.set(day.dateKey, leadIdsForDay(day.dateKey).length);
+
+    const assignments: { leadId: string; date: string }[] = [];
+    for (const lead of candidates) {
+      const target = days.find((day) => (used.get(day.dateKey) ?? 0) < Math.min(day.limit, BAN_RISK_LIMIT));
+      if (!target) break; // sem vaga segura em nenhum dia — o resto fica em Disponíveis
+      used.set(target.dateKey, (used.get(target.dateKey) ?? 0) + 1);
+      assignments.push({ leadId: lead.id, date: target.dateKey });
+    }
+
+    if (assignments.length === 0) return;
+    for (const assignment of assignments) autoAssignedRef.current.add(assignment.leadId);
+    autoDistributeMutation.mutate(assignments);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- roda a cada mudança de pool/days; o ref evita retrabalho
+  }, [pool, days]);
 
   const clearMutation = useMutation({
     mutationFn: () => clearCampaignLeads(campaignId),
@@ -406,35 +368,15 @@ export function BotWeekBoard({
           className="h-8 text-xs max-w-xs"
         />
         <span className="text-xs text-muted-foreground ml-1">
-          Arraste da lista de disponíveis para um dia da semana
+          Arraste da lista de disponíveis para um dia da semana · novos leads são distribuídos
+          automaticamente
         </span>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs ml-auto"
-          onClick={() => distributeMutation.mutate()}
-          disabled={distributeMutation.isPending || pool.length === 0 || days.length === 0}
-        >
-          <Shuffle className="h-3.5 w-3.5" />
-          {distributeMutation.isPending ? "Distribuindo…" : "Distribuir automaticamente"}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs"
-          onClick={() => reorganizeMutation.mutate()}
-          disabled={reorganizeMutation.isPending || plan.length === 0}
-          title={`Rebalanceia os dias respeitando o limite seguro (máx. ${BAN_RISK_LIMIT}/dia)`}
-        >
-          <ListRestart className="h-3.5 w-3.5" />
-          {reorganizeMutation.isPending ? "Reorganizando…" : "Reorganizar"}
-        </Button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs text-destructive hover:text-destructive"
+              className="h-8 text-xs text-destructive hover:text-destructive ml-auto"
               disabled={clearMutation.isPending}
             >
               <Eraser className="h-3.5 w-3.5" />

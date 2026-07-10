@@ -167,10 +167,16 @@ export async function assignLeadToDayService(leadId: string, date: string, campa
     return { ok: false, reason: 'Só leads em "A Prospectar" podem entrar na fila do bot.' };
   }
 
+  // Se o lead tinha sido colocado em "Hoje" (dispatch_queue) e agora está sendo
+  // remanejado pra um dia futuro, cancela o envio de hoje ainda pendente —
+  // senão ele fica duplicado: um card em "Hoje" e outro no dia novo.
+  await queueRepository.removeWaitingForLead(leadId, campaignId);
   await planRepository.assign(leadId, date, campaignId);
   return { ok: true };
 }
 
 export async function unassignLeadService(leadId: string) {
+  const campaignId = await leadsRepository.findCampaignIdForLead(leadId);
+  if (campaignId) await queueRepository.removeWaitingForLead(leadId, campaignId);
   await planRepository.unassign(leadId);
 }

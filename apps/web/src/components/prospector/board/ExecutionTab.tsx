@@ -121,7 +121,12 @@ export function ExecutionTab({ campaign }: { campaign: ProspectingCampaign }) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
-      <SessionControlCard campaignId={campaign.id} status={statusQuery.data} />
+      <SessionControlCard
+        campaignId={campaign.id}
+        status={statusQuery.data}
+        windowStart={windowStart}
+        windowEnd={windowEnd}
+      />
 
       <AgendaCard
         schedule={schedule}

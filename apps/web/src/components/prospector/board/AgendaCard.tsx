@@ -101,7 +101,7 @@ export function AgendaCard({
     if (!forecast) continue;
     if (forecast.overflow > 0) {
       warnings.push(
-        `${label}: com envio a cada ${Math.round(intervalMs / 60_000)}min só ${forecast.fits} de ${schedule[key].limit} cabem na janela — ${forecast.overflow} ficam de fora.`,
+        `${label}: só ${forecast.fits} de ${schedule[key].limit} cabem na janela até ${windowEnd}.`,
       );
     } else if (forecast.finishLate) {
       warnings.push(`${label}: a previsão de término (${forecast.finishLabel}) passa das 20:00.`);
@@ -110,12 +110,7 @@ export function AgendaCard({
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-4">
-      <div>
-        <p className="text-sm font-medium">Agenda semanal</p>
-        <p className="text-[11px] text-muted-foreground">
-          Clique no dia para ativar; ajuste quantos leads novos entram por dia.
-        </p>
-      </div>
+      <p className="text-sm font-medium">Agenda semanal</p>
 
       <div className="grid grid-cols-7 gap-1.5">
         {DAYS.map(({ key, label }) => {
@@ -123,26 +118,32 @@ export function AgendaCard({
           const forecast = forecastForDay(day, windowStart, windowEnd, intervalMs);
           const hasWarning = Boolean(forecast && (forecast.finishLate || forecast.overflow > 0));
 
+          if (!day.enabled) {
+            return (
+              <div
+                key={key}
+                onClick={() => toggleDay(key)}
+                className="rounded-lg border border-dashed border-border px-1 py-2 text-center cursor-pointer opacity-50 hover:opacity-80"
+                title="Clique para ligar este dia"
+              >
+                <p className="text-[10px] text-muted-foreground">{label}</p>
+                <p className="mt-1 text-sm font-semibold text-muted-foreground">·</p>
+                <p className="mt-0.5 h-3.5 text-[9px] text-muted-foreground">desligado</p>
+              </div>
+            );
+          }
+
           return (
             <div
               key={key}
               onClick={() => toggleDay(key)}
-              className={
-                day.enabled
-                  ? `rounded-lg border px-1 py-2 text-center cursor-pointer ${
-                      hasWarning
-                        ? "border-amber-500/60 bg-amber-500/10"
-                        : "border-primary bg-primary/10"
-                    }`
-                  : "rounded-lg border border-border bg-card px-1 py-2 text-center cursor-pointer opacity-70"
-              }
+              className={`rounded-lg border px-1 py-2 text-center cursor-pointer ${
+                hasWarning ? "border-amber-500/60 bg-amber-500/10" : "border-primary bg-primary/10"
+              }`}
+              title="Clique para desligar este dia"
             >
               <p
-                className={
-                  day.enabled
-                    ? `text-[10px] font-medium ${hasWarning ? "text-amber-600" : "text-primary"}`
-                    : "text-[10px] text-muted-foreground"
-                }
+                className={`text-[10px] font-medium ${hasWarning ? "text-amber-600" : "text-primary"}`}
               >
                 {label}
               </p>
@@ -150,28 +151,33 @@ export function AgendaCard({
                 type="number"
                 min={0}
                 value={day.limit}
-                disabled={!day.enabled}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setLimit(key, Math.max(0, Number(e.target.value) || 0))}
-                className="w-full mt-1 bg-transparent text-center text-sm font-semibold outline-none disabled:opacity-40"
+                className="w-full mt-1 bg-transparent text-center text-sm font-semibold outline-none"
               />
               <p className="mt-0.5 h-3.5 text-[9px] text-muted-foreground">
-                {day.enabled && forecast ? (
+                {forecast ? (
                   <span
                     className={
                       forecast.finishLate || forecast.overflow > 0 ? "text-amber-600" : undefined
                     }
                   >
-                    {forecast.overflow > 0 ? `só ${forecast.fits} cabem` : forecast.finishLabel}
+                    {forecast.overflow > 0
+                      ? `só ${forecast.fits} saem`
+                      : `até ${forecast.finishLabel}`}
                   </span>
                 ) : (
-                  "—"
+                  " "
                 )}
               </p>
             </div>
           );
         })}
       </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        Número = máximo de leads novos por dia · clique no dia para ligar/desligar.
+      </p>
 
       <div className="flex items-end gap-3 border-t border-border pt-3 flex-wrap">
         <div className="space-y-1">
