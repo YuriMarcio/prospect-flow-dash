@@ -148,9 +148,14 @@ export async function findProspectingCandidates(
 
 /**
  * Reivindica um lead pra uma campanha, só se ele ainda não pertencer a nenhuma
- * (update condicional atômico — evita corrida entre duas campanhas pegando o
- * mesmo lead compartilhado ao mesmo tempo). Retorna false se já estava
- * reivindicado por outra campanha.
+ * OU já pertencer a essa mesma campanha (update condicional atômico — evita
+ * corrida entre duas campanhas pegando o mesmo lead compartilhado ao mesmo
+ * tempo). Sem o "ou já é dessa campanha", um lead que foi reivindicado uma
+ * vez (ex.: colocado em "Hoje", depois remanejado pra um dia futuro — o que
+ * apaga a linha pendente de dispatch_queue mas não libera a reivindicação)
+ * fica travado pra sempre: nunca mais consegue ser reivindicado de novo pela
+ * própria campanha quando o dia planejado chega. Retorna false se já estava
+ * reivindicado por OUTRA campanha.
  */
 export async function claimForCampaign(leadId: string, campaignId: string): Promise<boolean> {
   const supabase = getSupabase();
@@ -158,7 +163,7 @@ export async function claimForCampaign(leadId: string, campaignId: string): Prom
     .from("leads")
     .update({ prospecting_campaign_id: campaignId })
     .eq("id", leadId)
-    .is("prospecting_campaign_id", null)
+    .or(`prospecting_campaign_id.is.null,prospecting_campaign_id.eq.${campaignId}`)
     .select("id")
     .maybeSingle();
 
