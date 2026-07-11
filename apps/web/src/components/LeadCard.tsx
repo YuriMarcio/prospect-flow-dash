@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { Lead } from "@/types";
 import { useLeadModalStore } from "@/store/leadModal";
+import { LeadStageProgress } from "@/components/LeadStageProgress";
 
 export interface BotDispatchInfo {
   status: "waiting" | "sending" | "sent" | "replied";
@@ -125,6 +126,8 @@ export function LeadCard({ lead, overlay = false, botDispatch }: LeadCardProps) 
         </h4>
         <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{lead.category}</p>
       </div>
+
+      <LeadStageProgress status={lead.status} />
 
       {badge && (
         <div className={`mt-1.5 flex items-center gap-1 text-[11px] ${badge.cls}`}>

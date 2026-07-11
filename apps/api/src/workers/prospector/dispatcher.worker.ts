@@ -50,19 +50,25 @@ async function dispatchOne(item: DispatchQueueRow, instanceName: string): Promis
     const client = getEvolutionClient();
     const validNumbers = await client.checkNumbers(instanceName, [digitsOnly]);
 
-    if (!validNumbers.includes(digitsOnly)) {
+    // O WhatsApp normaliza o número (ex.: remove o 9º dígito em DDDs legados
+    // como o 98), então o jid retornado raramente bate byte-a-byte com o
+    // número discado. Comparar com .includes(digitsOnly) marca como inválido
+    // números que na verdade existem — usamos o próprio número validado.
+    const canonicalNumber = validNumbers[0];
+
+    if (!canonicalNumber) {
       await markFailed(item, `Número ${lead.whatsapp} inválido no WhatsApp. Item marcado como falho.`);
       return;
     }
 
-    await sendMessageBlocks(client, instanceName, digitsOnly, message.bot_message_blocks);
+    await sendMessageBlocks(client, instanceName, canonicalNumber, message.bot_message_blocks);
 
     await queueRepository.update(item.id, { status: "sent", sent_at: new Date().toISOString() });
     await leadsRepository.update(item.lead_id, { status: "contato", column_id: "col-2" });
 
     await advanceAfterSend(item);
 
-    await botLogs.create(`Enviado para ${lead.name} (${lead.whatsapp}).`, "info");
+    await botLogs.create(`Enviado para ${lead.name} (${lead.whatsapp}).`, "info", item.prospecting_campaign_id);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     await markFailed(item, `Falha ao enviar item ${item.id}: ${message}`, "error");
@@ -75,7 +81,7 @@ async function markFailed(
   level: "warn" | "error" = "warn",
 ): Promise<void> {
   await queueRepository.update(item.id, { status: "failed" });
-  await botLogs.create(logMessage, level);
+  await botLogs.create(logMessage, level, item.prospecting_campaign_id);
 
   // Envio falhou — o lead não anda mais no fluxo desta campanha
   const state = await leadFlowStateRepository.findByLeadAndCampaign(
