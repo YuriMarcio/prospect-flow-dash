@@ -14,6 +14,7 @@ import { logsRoutes } from "./modules/logs/logs.routes";
 import { workersRoutes } from "./modules/workers/workers.routes";
 import { prospectorRoutes } from "./modules/prospector/prospector.routes";
 import { prospectingCampaignsRoutes } from "./modules/prospecting-campaigns/prospecting-campaigns.routes";
+import { flowTemplatesRoutes } from "./modules/flow-templates/flow-templates.routes";
 import { runDispatchTick } from "./workers/prospector/dispatcher.worker";
 import { buildTodayQueueForAllCampaigns } from "./workers/prospector/queue-builder.worker";
 import { runSessionTick } from "./workers/prospector/session.worker";
@@ -104,6 +105,7 @@ async function bootstrap() {
     await app.register(workersRoutes, { prefix: "/workers" });
     await app.register(prospectorRoutes, { prefix: "/prospector" });
     await app.register(prospectingCampaignsRoutes, { prefix: "/prospecting-campaigns" });
+    await app.register(flowTemplatesRoutes, { prefix: "/flow-templates" });
 
     // 5. Iniciando o servidor
     // O host "0.0.0.0" é importante se for rodar em Docker ou cloud depois

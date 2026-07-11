@@ -115,6 +115,45 @@ export async function deleteIntentResponse(campaignId: string, intent: string): 
   });
 }
 
+// ─── Modelos de fluxo (reutilizar em outras campanhas) ──────────────────────
+
+export interface FlowTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  node_count: number;
+}
+
+export async function listFlowTemplates(): Promise<FlowTemplate[]> {
+  return request(`/flow-templates`);
+}
+
+export async function createFlowTemplate(input: {
+  campaignId: string;
+  name: string;
+  description?: string;
+}): Promise<FlowTemplate> {
+  return request(`/flow-templates`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteFlowTemplate(id: string): Promise<void> {
+  await request(`/flow-templates/${id}`, { method: "DELETE" });
+}
+
+export async function applyFlowTemplate(
+  campaignId: string,
+  templateId: string,
+): Promise<FlowGraph> {
+  return request(`/prospecting-campaigns/${campaignId}/flow/apply-template`, {
+    method: "POST",
+    body: JSON.stringify({ templateId }),
+  });
+}
+
 export async function testAiClassification(
   campaignId: string,
   text: string,

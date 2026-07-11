@@ -20,6 +20,7 @@ import {
   deleteIntentResponseController,
   testAiClassificationController,
 } from "../flows/flows.controller";
+import { applyTemplateController } from "../flow-templates/flow-templates.controller";
 
 export async function prospectingCampaignsRoutes(app: FastifyInstance) {
   app.get("/", listCampaignsController);
@@ -37,6 +38,7 @@ export async function prospectingCampaignsRoutes(app: FastifyInstance) {
   // Fluxo de mensagens (Visual Flow Builder)
   app.get("/:id/flow", getFlowController);
   app.put("/:id/flow", saveFlowController);
+  app.post("/:id/flow/apply-template", applyTemplateController);
 
   // Respostas pré-aprovadas por intenção (IA)
   app.get("/:id/intent-responses", listIntentResponsesController);

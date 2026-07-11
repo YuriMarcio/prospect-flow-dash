@@ -15,17 +15,51 @@ import {
   type OnSelectionChangeFunc,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Clock, Flag, GitBranch, MessageSquare, Save } from "lucide-react";
+import {
+  BookmarkPlus,
+  Clock,
+  Flag,
+  FolderOpen,
+  GitBranch,
+  MessageSquare,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { listBotMessages } from "@/lib/prospector";
 import {
   getFlow,
   saveFlow,
+  listFlowTemplates,
+  createFlowTemplate,
+  applyFlowTemplate,
+  deleteFlowTemplate,
   type ApiFlowEdge,
   type ApiFlowNode,
   type FlowNodeConfig,
   type FlowNodeType,
+  type FlowTemplate,
 } from "@/lib/flows";
 import { MessagesContext, edgeLabelForHandle, nodeTypes, type CanvasNode } from "./nodes";
 import { NodeEditorPanel } from "./NodeEditorPanel";
@@ -77,6 +111,12 @@ export function FlowCanvas({ campaignId }: { campaignId: string }) {
   const [dirty, setDirty] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [templateDescription, setTemplateDescription] = useState("");
+  const [applyTemplateOpen, setApplyTemplateOpen] = useState(false);
+  const [pendingApply, setPendingApply] = useState<FlowTemplate | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<FlowTemplate | null>(null);
 
   const flowQuery = useQuery({
     queryKey: ["flow", campaignId],
@@ -127,6 +167,59 @@ export function FlowCanvas({ campaignId }: { campaignId: string }) {
       queryClient.invalidateQueries({ queryKey: ["flow", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-status", campaignId] });
       toast.success("Fluxo salvo.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const templatesQuery = useQuery({
+    queryKey: ["flow-templates"],
+    queryFn: listFlowTemplates,
+    enabled: applyTemplateOpen,
+  });
+
+  const createTemplateMutation = useMutation({
+    mutationFn: () =>
+      createFlowTemplate({
+        campaignId,
+        name: templateName.trim(),
+        description: templateDescription.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast.success("Modelo salvo.");
+      setSaveTemplateOpen(false);
+      setTemplateName("");
+      setTemplateDescription("");
+      queryClient.invalidateQueries({ queryKey: ["flow-templates"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const applyTemplateMutation = useMutation({
+    mutationFn: (templateId: string) => applyFlowTemplate(campaignId, templateId),
+    onSuccess: (result) => {
+      // Aplica o grafo retornado direto no canvas — evita depender do refetch
+      // assíncrono de ["flow", campaignId] (que chegaria tarde demais e/ou
+      // fora de ordem em relação a este setLoaded).
+      setNodes(toCanvasNodes(result.nodes));
+      setEdges(toCanvasEdges(result.edges));
+      setSelectedId(null);
+      setDirty(false);
+      toast.success("Modelo aplicado.");
+      setPendingApply(null);
+      setApplyTemplateOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["flow", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["bot-messages", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-status", campaignId] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: (id: string) => deleteFlowTemplate(id),
+    onSuccess: () => {
+      toast.success("Modelo excluído.");
+      setPendingDelete(null);
+      queryClient.invalidateQueries({ queryKey: ["flow-templates"] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -261,7 +354,21 @@ export function FlowCanvas({ campaignId }: { campaignId: string }) {
             ))}
           </div>
 
-          <div className="absolute right-3 top-3 z-10">
+          <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setApplyTemplateOpen(true)}>
+              <FolderOpen className="mr-1 h-3.5 w-3.5" />
+              Aplicar modelo
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSaveTemplateOpen(true)}
+              disabled={nodes.length === 0 || dirty}
+              title={dirty ? "Salve o fluxo antes de virar modelo" : undefined}
+            >
+              <BookmarkPlus className="mr-1 h-3.5 w-3.5" />
+              Salvar como modelo
+            </Button>
             <Button
               size="sm"
               onClick={() => saveMutation.mutate()}
@@ -292,6 +399,154 @@ export function FlowCanvas({ campaignId }: { campaignId: string }) {
           />
         )}
       </div>
+
+      {/* Salvar fluxo atual como modelo reutilizável */}
+      <Dialog open={saveTemplateOpen} onOpenChange={setSaveTemplateOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">Salvar como modelo</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-1">
+            Salva o fluxo salvo desta campanha (mensagens, esperas e conexões) como um modelo pra
+            aplicar em outras campanhas depois.
+          </p>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="template-name" className="text-xs">
+                Nome
+              </Label>
+              <Input
+                id="template-name"
+                placeholder="ex: Fechamento delivery — padrão"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="template-description" className="text-xs">
+                Descrição (opcional)
+              </Label>
+              <Textarea
+                id="template-description"
+                placeholder="Pra que serve esse fluxo?"
+                value={templateDescription}
+                onChange={(e) => setTemplateDescription(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setSaveTemplateOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => createTemplateMutation.mutate()}
+              disabled={!templateName.trim() || createTemplateMutation.isPending}
+            >
+              {createTemplateMutation.isPending ? "Salvando…" : "Salvar modelo"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Aplicar um modelo salvo nesta campanha */}
+      <Dialog open={applyTemplateOpen} onOpenChange={setApplyTemplateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">Aplicar modelo</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-1">
+            Isso substitui o fluxo atual desta campanha pelo modelo escolhido.
+          </p>
+          <div className="max-h-80 space-y-1.5 overflow-y-auto">
+            {templatesQuery.isLoading && (
+              <p className="py-6 text-center text-xs text-muted-foreground">Carregando…</p>
+            )}
+            {templatesQuery.data?.length === 0 && (
+              <p className="py-6 text-center text-xs text-muted-foreground">
+                Nenhum modelo salvo ainda.
+              </p>
+            )}
+            {templatesQuery.data?.map((template) => (
+              <div
+                key={template.id}
+                className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{template.name}</p>
+                  {template.description && (
+                    <p className="truncate text-xs text-muted-foreground">{template.description}</p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">{template.node_count} nós</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button size="sm" variant="outline" onClick={() => setPendingApply(template)}>
+                    Usar
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingDelete(template)}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    aria-label={`Excluir modelo ${template.name}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação: aplicar modelo substitui o fluxo atual */}
+      <AlertDialog
+        open={Boolean(pendingApply)}
+        onOpenChange={(open) => !open && setPendingApply(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aplicar "{pendingApply?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O fluxo atual desta campanha (mensagens, esperas e conexões) vai ser substituído pelo
+              modelo. Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => pendingApply && applyTemplateMutation.mutate(pendingApply.id)}
+              disabled={applyTemplateMutation.isPending}
+            >
+              {applyTemplateMutation.isPending ? "Aplicando…" : "Aplicar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação: excluir modelo */}
+      <AlertDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir modelo "{pendingDelete?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso não afeta nenhuma campanha que já usa esse fluxo — só remove o modelo salvo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => pendingDelete && deleteTemplateMutation.mutate(pendingDelete.id)}
+              disabled={deleteTemplateMutation.isPending}
+            >
+              {deleteTemplateMutation.isPending ? "Excluindo…" : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MessagesContext.Provider>
   );
 }
