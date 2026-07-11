@@ -145,6 +145,21 @@ export async function findMostRecentSentForLead(leadId: string): Promise<Dispatc
   return data;
 }
 
+export async function findMostRecentSentForCampaign(campaignId: string): Promise<DispatchQueueRow | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("dispatch_queue")
+    .select("*")
+    .eq("prospecting_campaign_id", campaignId)
+    .eq("status", "sent")
+    .order("sent_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function findRecentResponseTexts(sinceIso: string): Promise<string[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase

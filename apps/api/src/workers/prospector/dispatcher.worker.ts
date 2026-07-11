@@ -10,17 +10,33 @@ import { checkUntilDoneCompletion } from "./session.worker";
 import { sendMessageBlocks } from "./send-blocks";
 import { advanceAfterSend } from "./flow-engine";
 
+type CampaignWithInstance = Awaited<
+  ReturnType<typeof campaignsRepository.findActiveWithConnectedInstance>
+>[number];
+
 export async function runDispatchTick(): Promise<void> {
   const campaigns = await campaignsRepository.findActiveWithConnectedInstance();
 
   for (const campaign of campaigns) {
     const dueItems = await queueRepository.findDueItems(new Date().toISOString(), campaign.id);
-    for (const item of dueItems) {
-      await dispatchOne(item, campaign.instance_name);
+
+    // Só um envio por campanha por tick, respeitando min_interval_ms — o
+    // espaçamento em scheduled_at é definido na hora de montar a fila, mas
+    // se vários itens virarem "due" de uma vez (retry manual, tick perdido)
+    // isso é a única coisa que impede um estouro de mensagens em segundos,
+    // o que aumenta risco de bloqueio do número.
+    if (dueItems.length > 0 && (await canDispatchNow(campaign))) {
+      await dispatchOne(dueItems[0], campaign.instance_name);
     }
 
     await checkUntilDoneCompletion(campaign.id);
   }
+}
+
+async function canDispatchNow(campaign: CampaignWithInstance): Promise<boolean> {
+  const lastSent = await queueRepository.findMostRecentSentForCampaign(campaign.id);
+  if (!lastSent?.sent_at) return true;
+  return Date.now() - new Date(lastSent.sent_at).getTime() >= campaign.min_interval_ms;
 }
 
 async function dispatchOne(item: DispatchQueueRow, instanceName: string): Promise<void> {
