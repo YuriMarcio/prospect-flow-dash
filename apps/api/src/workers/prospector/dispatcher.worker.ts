@@ -6,7 +6,6 @@ import * as botLogs from "../../modules/prospector/botlogs.repository";
 import * as leadsRepository from "../../modules/leads/leads.repository";
 import * as leadFlowStateRepository from "../../modules/prospector/lead-flow-state.repository";
 import * as campaignsRepository from "../../modules/prospecting-campaigns/prospecting-campaigns.repository";
-import { checkUntilDoneCompletion } from "./session.worker";
 import { sendMessageBlocks } from "./send-blocks";
 import { advanceAfterSend } from "./flow-engine";
 
@@ -28,8 +27,6 @@ export async function runDispatchTick(): Promise<void> {
     if (dueItems.length > 0 && (await canDispatchNow(campaign))) {
       await dispatchOne(dueItems[0], campaign.instance_name);
     }
-
-    await checkUntilDoneCompletion(campaign.id);
   }
 }
 

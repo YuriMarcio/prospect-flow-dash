@@ -1,4 +1,4 @@
-import { chromium, BrowserContext } from "playwright";
+import { chromium } from "playwright";
 import * as campaignsRepository from "../../modules/campaigns/campaigns.repository";
 import * as leadsRepository from "../../modules/leads/leads.repository";
 import * as logsRepository from "../../modules/logs/logs.repository";
@@ -17,81 +17,6 @@ function toSlug(name: string): string {
 function parseWhatsApp(href: string): string | null {
   const match = href.match(/wa\.me\/(\d+)/);
   return match ? match[1] : null;
-}
-
-function parseInstagramUrl(raw: string): string | null {
-  let decode = raw;
-
-  // Google redirect: /url?q=... ou https://www.google.com/url?q=...
-  if (raw.includes("google.com/url") || raw.startsWith("/url?")) {
-    decode = decodeURIComponent(raw.match(/[?&]q=([^&]+)/)?.[1] ?? "");
-  }
-
-  // DuckDuckGo redirect: //duckduckgo.com/l/?uddg=...
-  if (raw.includes("duckduckgo.com/l/") || raw.startsWith("//duckduckgo.com")) {
-    decode = decodeURIComponent(raw.match(/[?&]uddg=([^&]+)/)?.[1] ?? "");
-  }
-
-  const match = decode.match(/https?:\/\/(?:www\.)?instagram\.com\/([a-zA-Z0-9._]+)\/?/);
-  if (!match) return null;
-
-  const username = match[1];
-  const invalid = ["p", "reel", "reels", "stories", "explore", "accounts", "tv", "s", "web"];
-  if (invalid.includes(username)) return null;
-
-  return `https://www.instagram.com/${username}/`;
-}
-
-async function searchInstagram(
-  context: BrowserContext,
-  query: string,
-): Promise<string | null> {
-  // DuckDuckGo HTML: sem JavaScript, sem consent, sem bot detection
-  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-  const page = await context.newPage();
-
-  try {
-    await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
-
-    // Aguarda pelo menos um resultado aparecer
-    await page.waitForSelector(".result__a, .result__url", { timeout: 6000 }).catch(() => {});
-
-    const hrefs = await page.$$eval("a[href]", (as) =>
-      (as as HTMLAnchorElement[])
-        .map((a) => a.getAttribute("href") ?? "")
-        .filter((h) => h.includes("instagram.com") || h.includes("uddg=")),
-    );
-
-    await page.close();
-
-    for (const href of hrefs) {
-      const url = parseInstagramUrl(href);
-      if (url) return url;
-    }
-  } catch {
-    await page.close().catch(() => {});
-  }
-
-  return null;
-}
-
-async function findInstagramViaGoogle(
-  context: BrowserContext,
-  storeName: string,
-  cityName: string,
-): Promise<string | null> {
-  // Tenta com cidade; fallback sem cidade se não achar
-  const queries = [
-    `site:instagram.com "${storeName}" "${cityName}"`,
-    `site:instagram.com "${storeName}"`,
-  ];
-
-  for (const query of queries) {
-    const result = await searchInstagram(context, query);
-    if (result) return result;
-  }
-
-  return null;
 }
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -117,7 +42,10 @@ export async function runInstaDeliveryScraping(
   });
 
   try {
-    // ── 1. Coletar lista de lojas com scroll infinito ─────────────────────────
+    // ── 1. Coletar lista de lojas ──────────────────────────────────────────────
+    // O portal renderiza a lista inteira da cidade de uma vez no carregamento
+    // (confirmado inspecionando o DOM ao vivo) — não há scroll infinito nem
+    // paginação, então basta esperar o seletor e ler tudo direto.
     const listPage = await context.newPage();
 
     try {
@@ -140,29 +68,6 @@ export async function runInstaDeliveryScraping(
       await campaignsRepository.updateStatus(campaignId, "done");
       await browser.close();
       return;
-    }
-
-    // Scroll infinito: rola até o conteúdo estabilizar por 3 rounds consecutivos
-    let previousCount = 0;
-    let stableRounds = 0;
-
-    while (stableRounds < 3) {
-      await listPage.evaluate(() =>
-        window.scrollTo(0, document.body.scrollHeight),
-      );
-      await delay(1500);
-
-      const currentCount = await listPage.$$eval(
-        ".food-menu-content",
-        (els) => els.length,
-      );
-
-      if (currentCount === previousCount) {
-        stableRounds++;
-      } else {
-        stableRounds = 0;
-        previousCount = currentCount;
-      }
     }
 
     const stores: { name: string; url: string }[] = await listPage.$$eval(
@@ -227,14 +132,10 @@ export async function runInstaDeliveryScraping(
 
         const whatsapp = waHref ? parseWhatsApp(waHref) : null;
 
-        // Busca Instagram via Google (sem acessar o perfil, só coleta o link)
-        const instagramUrl = await findInstagramViaGoogle(context, store.name, cityName);
-
         const { created } = await leadsRepository.createUnique({
           campaign_id: campaignId,
           name: store.name,
           whatsapp: whatsapp ?? undefined,
-          instagram_url: instagramUrl ?? undefined,
           city: cityName,
           category: "Delivery",
           source: "instadelivery",
@@ -245,7 +146,7 @@ export async function runInstaDeliveryScraping(
 
         await logsRepository.create(
           campaignId,
-          `[${processed}/${limit}] ${store.name} | WA: ${whatsapp ?? "—"} | IG: ${instagramUrl ? "@" + instagramUrl.split("/").filter(Boolean).pop() : "—"} | ${created ? "SALVO" : "DUPLICADO"}`,
+          `[${processed}/${limit}] ${store.name} | WA: ${whatsapp ?? "—"} | ${created ? "SALVO" : "DUPLICADO"}`,
           "info",
         );
 

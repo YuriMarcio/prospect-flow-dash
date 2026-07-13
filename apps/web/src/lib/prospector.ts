@@ -291,6 +291,11 @@ export async function listDispatchQueue(campaignId: string): Promise<DispatchQue
   return request(`/prospector/queue?campaignId=${campaignId}`);
 }
 
+/** Histórico completo de envios da campanha (todos os dias, não só hoje). */
+export async function listDispatchQueueHistory(campaignId: string): Promise<DispatchQueueItem[]> {
+  return request(`/prospector/queue/history?campaignId=${campaignId}`);
+}
+
 export async function listBotLogs(campaignId?: string): Promise<BotLog[]> {
   return request(campaignId ? `/prospector/logs?campaignId=${campaignId}` : "/prospector/logs");
 }

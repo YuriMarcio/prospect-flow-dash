@@ -9,6 +9,7 @@ import {
   uploadMediaService,
   buildQueueService,
   listQueueService,
+  listQueueHistoryService,
   listLogsService,
   handleWebhookService,
   listPlanService,
@@ -96,6 +97,14 @@ export async function listQueueController(
   reply: FastifyReply,
 ) {
   const result = await listQueueService(campaignId(request));
+  return reply.send(result);
+}
+
+export async function listQueueHistoryController(
+  request: FastifyRequest<{ Querystring: { campaignId?: string } }>,
+  reply: FastifyReply,
+) {
+  const result = await listQueueHistoryService(campaignId(request));
   return reply.send(result);
 }
 

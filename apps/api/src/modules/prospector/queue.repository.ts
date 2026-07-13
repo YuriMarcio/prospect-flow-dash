@@ -197,6 +197,19 @@ export async function removeAllForCampaign(campaignId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Histórico completo de envios da campanha (todos os dias, não só hoje) — alimenta a coluna "Prospectados" do board. */
+export async function findAllForCampaign(campaignId: string): Promise<DispatchQueueRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("dispatch_queue")
+    .select("*")
+    .eq("prospecting_campaign_id", campaignId)
+    .order("scheduled_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function findAllForToday(campaignId: string): Promise<DispatchQueueRow[]> {
   const supabase = getSupabase();
   const startOfDay = new Date();

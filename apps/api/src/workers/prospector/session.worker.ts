@@ -1,5 +1,4 @@
 import * as campaignsRepository from "../../modules/prospecting-campaigns/prospecting-campaigns.repository";
-import * as queueRepository from "../../modules/prospector/queue.repository";
 import * as botLogs from "../../modules/prospector/botlogs.repository";
 
 export type SessionMode = "until_done" | "custom";
@@ -22,7 +21,7 @@ export async function startSessionForCampaign(
 
   await botLogs.create(
     isStartingNow
-      ? `Bot ativado agora${endAt ? ` até ${new Date(endAt).toLocaleTimeString("pt-BR")}` : input.mode === "until_done" ? " (até terminar a fila de hoje)" : ""}.`
+      ? `Bot ativado agora${endAt ? ` até ${new Date(endAt).toLocaleTimeString("pt-BR")}` : ""}.`
       : `Bot agendado para iniciar às ${new Date(startAt).toLocaleTimeString("pt-BR")}.`,
     "info",
     campaignId,
@@ -69,24 +68,5 @@ export async function runSessionTick(): Promise<void> {
       await stopSessionForCampaign(campaign.id);
       await botLogs.create(`Bot pausado automaticamente: horário final da sessão atingido.`, "info", campaign.id);
     }
-  }
-}
-
-/**
- * Chamado pelo dispatcher após cada tick de uma campanha: se a sessão é "até
- * terminar a fila de hoje" e não há mais nada esperando, pausa o bot sozinho.
- */
-export async function checkUntilDoneCompletion(campaignId: string): Promise<void> {
-  const campaign = await campaignsRepository.findById(campaignId);
-  if (!campaign || campaign.session_mode !== "until_done" || !campaign.is_active) return;
-
-  // Ignora follow-ups agendados pra dias futuros — senão a sessão "até
-  // terminar" nunca consideraria a fila do dia concluída.
-  const remaining = await queueRepository.countWaitingDueToday(campaignId);
-  const sentSoFar = await queueRepository.countToday(campaignId, "sent");
-
-  if (remaining === 0 && sentSoFar > 0) {
-    await stopSessionForCampaign(campaignId);
-    await botLogs.create(`Bot pausado automaticamente: fila de hoje concluída.`, "info", campaignId);
   }
 }

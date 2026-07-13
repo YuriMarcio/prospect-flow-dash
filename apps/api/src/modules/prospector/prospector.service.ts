@@ -124,6 +124,10 @@ export async function listQueueService(campaignId: string) {
   return queueRepository.findAllForToday(campaignId);
 }
 
+export async function listQueueHistoryService(campaignId: string) {
+  return queueRepository.findAllForCampaign(campaignId);
+}
+
 export async function listLogsService(campaignId?: string) {
   return campaignId ? botLogs.findRecentByCampaign(campaignId, 100) : botLogs.findRecent(100);
 }

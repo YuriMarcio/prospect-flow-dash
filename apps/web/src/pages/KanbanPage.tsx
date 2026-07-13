@@ -33,7 +33,13 @@ import { CampaignMetricsPanel } from "@/components/prospector/CampaignMetricsPan
 import { ConnectQrDialog } from "@/components/prospector/ConnectQrDialog";
 import { CampaignBoard } from "@/components/prospector/board/CampaignBoard";
 import { deduplicateLeads, getStatusForColumn, updateLead as updateLeadApi } from "@/lib/api";
-import { getCampaignStatus, listCampaigns, listDispatchQueue, type ProspectingCampaign } from "@/lib/prospector";
+import {
+  getCampaignStatus,
+  listCampaigns,
+  listDispatchQueue,
+  listDispatchQueueHistory,
+  type ProspectingCampaign,
+} from "@/lib/prospector";
 import { BotWeekBoard } from "@/components/prospector/BotWeekBoard";
 import { NewCampaignModal } from "@/components/prospector/NewCampaignModal";
 import { useLeadsSync } from "@/hooks/use-leads-sync";
@@ -146,6 +152,13 @@ export function KanbanPage() {
     queryFn: () => listDispatchQueue(activeCampaign!.id),
     enabled: Boolean(activeCampaign),
     refetchInterval: 5000,
+  });
+
+  const campaignQueueHistoryQuery = useQuery({
+    queryKey: ["bot-queue-history", activeCampaign?.id],
+    queryFn: () => listDispatchQueueHistory(activeCampaign!.id),
+    enabled: Boolean(activeCampaign),
+    refetchInterval: 8000,
   });
 
   const botDispatchByLeadId = useMemo(() => {
@@ -360,7 +373,7 @@ export function KanbanPage() {
           <BotWeekBoard
             campaignId={activeCampaign.id}
             leads={leads}
-            botDispatchByLeadId={botDispatchByLeadId}
+            dispatchHistory={campaignQueueHistoryQuery.data ?? []}
           />
 
           <ConnectQrDialog open={connectOpen} onOpenChange={setConnectOpen} />

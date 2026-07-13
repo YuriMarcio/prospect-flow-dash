@@ -39,7 +39,7 @@ export function SessionControlCard({
     mutationFn: () => startCampaignSession(campaignId, { mode: "until_done" }),
     onSuccess: () => {
       invalidate();
-      toast.success("Bot iniciado — roda até terminar a fila de hoje.");
+      toast.success("Bot iniciado — fica ativo até você pausar.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -84,7 +84,7 @@ export function SessionControlCard({
             className={`h-2 w-2 rounded-full ${isActive ? "bg-green-500 animate-pulse" : "bg-muted-foreground"}`}
           />
           {isActive
-            ? `Bot ativo${sessionEndLabel ? ` até ${sessionEndLabel}` : " — roda até terminar a fila de hoje"}`
+            ? `Bot ativo${sessionEndLabel ? ` até ${sessionEndLabel}` : ""}`
             : connected
               ? "Bot pausado"
               : "WhatsApp desconectado"}
@@ -130,8 +130,8 @@ export function SessionControlCard({
       </div>
 
       <p className="text-[11px] text-muted-foreground">
-        Os envios acontecem dentro da janela da agenda ({windowStart}–{windowEnd}) e o bot pausa
-        sozinho quando a fila de hoje termina.
+        Os envios acontecem dentro da janela da agenda ({windowStart}–{windowEnd}). O bot fica ativo
+        indefinidamente — use "Pausar bot" pra parar manualmente.
       </p>
 
       {finishLate && (

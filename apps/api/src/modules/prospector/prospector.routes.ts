@@ -9,6 +9,7 @@ import {
   uploadMediaController,
   buildQueueController,
   listQueueController,
+  listQueueHistoryController,
   listPlanController,
   assignPlanController,
   unassignPlanController,
@@ -28,6 +29,7 @@ export async function prospectorRoutes(app: FastifyInstance) {
 
   app.post("/queue/build", buildQueueController);
   app.get("/queue", listQueueController);
+  app.get("/queue/history", listQueueHistoryController);
 
   app.get("/plan", listPlanController);
   app.post("/plan", assignPlanController);
