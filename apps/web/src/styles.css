@@ -143,6 +143,13 @@
     0 8px 30px -8px color-mix(in oklab, var(--primary) 35%, transparent);
 }
 
+/* Editor de blocos do Workspace: placeholder em divs contentEditable vazias */
+[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
