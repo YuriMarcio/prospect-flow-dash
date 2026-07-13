@@ -15,6 +15,8 @@ import { workersRoutes } from "./modules/workers/workers.routes";
 import { prospectorRoutes } from "./modules/prospector/prospector.routes";
 import { prospectingCampaignsRoutes } from "./modules/prospecting-campaigns/prospecting-campaigns.routes";
 import { flowTemplatesRoutes } from "./modules/flow-templates/flow-templates.routes";
+import { vaultAuthRoutes } from "./modules/vault-auth/vault-auth.routes";
+import { vaultRoutes } from "./modules/vault/vault.routes";
 import { runDispatchTick } from "./workers/prospector/dispatcher.worker";
 import { buildTodayQueueForAllCampaigns } from "./workers/prospector/queue-builder.worker";
 import { runSessionTick } from "./workers/prospector/session.worker";
@@ -69,11 +71,22 @@ async function bootstrap() {
     if (!process.env.SESSION_SECRET) {
       throw new Error("Configure SESSION_SECRET no .env para habilitar o login.");
     }
+    if (!process.env.VAULT_TOKEN_SECRET || !process.env.VAULT_ENCRYPTION_KEY) {
+      throw new Error("Configure VAULT_TOKEN_SECRET e VAULT_ENCRYPTION_KEY no .env para habilitar o Cofre de Senhas.");
+    }
 
     await app.register(fastifyCookie);
     await app.register(fastifyJwt, {
       secret: process.env.SESSION_SECRET,
       cookie: { cookieName: SESSION_COOKIE_NAME, signed: false },
+    });
+
+    // Segundo JWT, isolado do de sessão — só existe depois de uma verificação
+    // TOTP bem-sucedida (POST /vault-auth/verify) e só vale para /vault/*.
+    // Vem via header Authorization (sem cookie), guardado em memória no front.
+    await app.register(fastifyJwt, {
+      secret: process.env.VAULT_TOKEN_SECRET,
+      namespace: "vault",
     });
 
     // 2. Gate de autenticação global — exige sessão válida em toda rota,
@@ -106,6 +119,8 @@ async function bootstrap() {
     await app.register(prospectorRoutes, { prefix: "/prospector" });
     await app.register(prospectingCampaignsRoutes, { prefix: "/prospecting-campaigns" });
     await app.register(flowTemplatesRoutes, { prefix: "/flow-templates" });
+    await app.register(vaultAuthRoutes, { prefix: "/vault-auth" });
+    await app.register(vaultRoutes, { prefix: "/vault" });
 
     // 5. Iniciando o servidor
     // O host "0.0.0.0" é importante se for rodar em Docker ou cloud depois

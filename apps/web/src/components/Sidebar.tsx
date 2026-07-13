@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, Users, KanbanSquare, CalendarClock, Bot, Download, BarChart3, Settings, Sparkles,
+  LayoutDashboard, Users, KanbanSquare, CalendarClock, Bot, Download, BarChart3, Settings, Sparkles, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,7 @@ const items = [
   { to: "/automacao", label: "Automação", icon: Bot },
   { to: "/capturas", label: "Capturas", icon: Download },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
+  { to: "/senhas", label: "Senhas", icon: Lock },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
 ] as const;
 

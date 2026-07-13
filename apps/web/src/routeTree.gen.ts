@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SenhasRouteImport } from './routes/senhas'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeadsRouteImport } from './routes/leads'
 import { Route as KanbanRouteImport } from './routes/kanban'
@@ -19,6 +20,11 @@ import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SenhasRoute = SenhasRouteImport.update({
+  id: '/senhas',
+  path: '/senhas',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/kanban': typeof KanbanRoute
   '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
+  '/senhas': typeof SenhasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByTo {
   '/kanban': typeof KanbanRoute
   '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
+  '/senhas': typeof SenhasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -98,6 +106,7 @@ export interface FileRoutesById {
   '/kanban': typeof KanbanRoute
   '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
+  '/senhas': typeof SenhasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -111,6 +120,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/leads'
     | '/login'
+    | '/senhas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -122,6 +132,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/leads'
     | '/login'
+    | '/senhas'
   id:
     | '__root__'
     | '/'
@@ -133,6 +144,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/leads'
     | '/login'
+    | '/senhas'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -145,10 +157,18 @@ export interface RootRouteChildren {
   KanbanRoute: typeof KanbanRoute
   LeadsRoute: typeof LeadsRoute
   LoginRoute: typeof LoginRoute
+  SenhasRoute: typeof SenhasRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/senhas': {
+      id: '/senhas'
+      path: '/senhas'
+      fullPath: '/senhas'
+      preLoaderRoute: typeof SenhasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -225,6 +245,7 @@ const rootRouteChildren: RootRouteChildren = {
   KanbanRoute: KanbanRoute,
   LeadsRoute: LeadsRoute,
   LoginRoute: LoginRoute,
+  SenhasRoute: SenhasRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
