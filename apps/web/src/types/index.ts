@@ -56,5 +56,7 @@ export interface Capture {
   errors: number;
   duration: string;
   startedAt: string;
+  /** ISO timestamp antes da formatação — usado para estimativas de tempo (startedAt já vem formatado e não é reparseável). */
+  startedAtRaw?: string;
   logs: { time: string; message: string; level: "info" | "warn" | "error" }[];
 }

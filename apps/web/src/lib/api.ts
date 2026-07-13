@@ -140,6 +140,7 @@ function normalizeCampaign(campaign: ApiCampaign): Capture {
     errors: number(campaign.errors, number(campaign.error_count, 0)),
     duration: text(campaign.duration, "—"),
     startedAt: formatDate(campaign.started_at ?? campaign.created_at),
+    startedAtRaw: text(campaign.started_at ?? campaign.created_at, undefined),
     logs: Array.isArray(campaign.logs) ? campaign.logs.map((log) => normalizeLog(log)) : [],
   };
 }
