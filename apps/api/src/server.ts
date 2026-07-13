@@ -62,7 +62,7 @@ async function bootstrap() {
       );
       reply.header(
         "Access-Control-Allow-Headers",
-        "Content-Type, Authorization",
+        "Content-Type, Authorization, X-Vault-Token",
       );
     });
 

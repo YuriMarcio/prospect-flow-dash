@@ -15,7 +15,10 @@ async function vaultRequest<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // Header próprio (não Authorization) — o `Authorization: Bearer` é
+      // escaneado pela checagem de sessão global, que usaria o secret errado
+      // pra validar o token do cofre e derrubaria a request com 401.
+      ...(token ? { "X-Vault-Token": token } : {}),
       ...init?.headers,
     },
   });

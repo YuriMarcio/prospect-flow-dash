@@ -18,17 +18,25 @@ import {
  * Exige, além da sessão normal (já validada globalmente em server.ts), um
  * vault_token válido — emitido só depois da verificação TOTP bem-sucedida
  * (POST /vault-auth/verify). Sem isso o cofre em si permanece bloqueado.
+ *
+ * O token vem no header `X-Vault-Token`, não em `Authorization` — o
+ * lookupToken do @fastify/jwt escaneia `Authorization: Bearer` para QUALQUER
+ * instância registrada (inclusive a de sessão principal), então se o token do
+ * cofre fosse mandado ali, o preHandler global de sessão tentaria validá-lo
+ * com o secret errado e derrubaria a request com 401 antes de chegar aqui.
  */
 type VaultPayload = { userId: string; scope: string };
-// @fastify/jwt tipa os decorators com namespace como JWT['verify'] (que exige o
-// token como argumento), mas em runtime o decorator de request funciona igual
-// ao request.jwtVerify() sem argumentos — lê o token do header Authorization.
-type VaultJwtVerify = () => Promise<VaultPayload>;
+
+function getVaultJwt(app: FastifyInstance): { verify: (token: string) => VaultPayload } {
+  return (app as unknown as { jwt: { vault: { verify: (token: string) => VaultPayload } } }).jwt.vault;
+}
 
 async function requireVaultScope(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const verify = request.vaultJwtVerify as unknown as VaultJwtVerify;
-    const payload = await verify();
+    const token = request.headers["x-vault-token"];
+    if (typeof token !== "string" || !token) throw new Error("token ausente");
+
+    const payload = getVaultJwt(request.server).verify(token);
     const sessionUserId = (request.user as { userId: string }).userId;
     if (payload.scope !== "vault" || payload.userId !== sessionUserId) {
       throw new Error("escopo inválido");
