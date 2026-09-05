@@ -3,6 +3,11 @@ dist
 build
 coverage
 
+# Vendorizado (não é build artifact do nosso código, é a dependência
+# @sinal/evolution-client em si) — precisa estar versionado pro Docker
+# build no Coolify (que clona do GitHub) conseguir instalar via file:.
+!apps/api/vendor/evolution-client/dist
+
 .env
 .env.local
 .env.*
