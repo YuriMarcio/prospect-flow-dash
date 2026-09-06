@@ -1,5 +1,5 @@
 import { useDraggable } from "@dnd-kit/core";
-import { CalendarClock, Link2 } from "lucide-react";
+import { CalendarClock, Layers, Link2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import type { Objective } from "@/lib/objectives";
 
@@ -7,10 +7,14 @@ export function ObjectiveCard({
   objective,
   overlay = false,
   onOpen,
+  assigneeName,
+  sprintName,
 }: {
   objective: Objective;
   overlay?: boolean;
   onOpen?: (objective: Objective) => void;
+  assigneeName?: string | null;
+  sprintName?: string | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: objective.id,
@@ -50,11 +54,21 @@ export function ObjectiveCard({
         <Progress value={objective.progress} className="h-1.5" />
       </div>
 
+      {sprintName && (
+        <div className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground">
+          <Layers className="h-3 w-3" />
+          <span className="truncate">{sprintName}</span>
+        </div>
+      )}
+
       <div className="mt-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {objective.owner && (
-            <span className="grid h-5 w-5 place-items-center rounded-full bg-primary/15 text-[10px] font-medium text-primary">
-              {objective.owner.slice(0, 2).toUpperCase()}
+          {assigneeName && (
+            <span
+              title={assigneeName}
+              className="grid h-5 w-5 place-items-center rounded-full bg-primary/15 text-[10px] font-medium text-primary"
+            >
+              {assigneeName.slice(0, 2).toUpperCase()}
             </span>
           )}
           {objective.linkedPageId && <Link2 className="h-3 w-3 text-muted-foreground" />}

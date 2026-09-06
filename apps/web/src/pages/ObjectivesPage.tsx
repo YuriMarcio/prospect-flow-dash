@@ -10,7 +10,7 @@ import {
   useSensors,
   closestCorners,
 } from "@dnd-kit/core";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -35,8 +42,11 @@ import { WorkspacePagePicker } from "@/components/objectives/WorkspacePagePicker
 import {
   createObjective,
   createObjectiveColumn,
+  createSprint,
   deleteObjective,
   deleteObjectiveColumn,
+  listSprints,
+  listTeamUsers,
   updateObjective,
   updateObjectiveColumn,
   type Objective,
@@ -59,8 +69,28 @@ export function ObjectivesPage() {
   const [selected, setSelected] = useState<Objective | null>(null);
   const [draft, setDraft] = useState<Partial<Objective>>({});
   const [pagePickerOpen, setPagePickerOpen] = useState(false);
+  const [sprintFilter, setSprintFilter] = useState<string>("all");
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  const sprintsQuery = useQuery({ queryKey: ["sprints"], queryFn: listSprints });
+  const sprints = sprintsQuery.data ?? [];
+  const teamQuery = useQuery({ queryKey: ["team-users"], queryFn: listTeamUsers });
+  const teamUsers = teamQuery.data ?? [];
+
+  const createSprintMutation = useMutation({
+    mutationFn: (name: string) => {
+      const start = new Date();
+      const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+      const toIso = (d: Date) => d.toISOString().slice(0, 10);
+      return createSprint({ name, startDate: toIso(start), endDate: toIso(end) });
+    },
+    onSuccess: (sprint) => {
+      queryClient.setQueryData<typeof sprints>(["sprints"], (current) => [...(current ?? []), sprint]);
+      setSprintFilter(sprint.id);
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
   const moveMutation = useMutation({
     mutationFn: ({ id, columnId, order }: { id: string; columnId: string; order: number }) =>
@@ -86,6 +116,12 @@ export function ObjectivesPage() {
       removeColumn(id);
       queryClient.invalidateQueries({ queryKey: ["objectives"] });
     },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const toggleDoneMutation = useMutation({
+    mutationFn: ({ id, isDone }: { id: string; isDone: boolean }) => updateObjectiveColumn(id, { isDone }),
+    onSuccess: (column) => upsertColumn(column),
     onError: (error: Error) => toast.error(error.message),
   });
 
@@ -144,7 +180,14 @@ export function ObjectivesPage() {
   }
 
   const sorted = [...columns].sort((a, b) => a.order - b.order);
-  const activeObjective = activeId ? objectives.find((o) => o.id === activeId) : null;
+  const visibleObjectives =
+    sprintFilter === "all" ? objectives : objectives.filter((o) => o.sprintId === sprintFilter);
+  const activeObjective = activeId ? visibleObjectives.find((o) => o.id === activeId) : null;
+
+  const assigneeNameById = Object.fromEntries(
+    teamUsers.map((user) => [user.id, user.name || user.username || user.id]),
+  );
+  const sprintNameById = Object.fromEntries(sprints.map((sprint) => [sprint.id, sprint.name]));
 
   function openDetail(objective: Objective) {
     setSelected(objective);
@@ -153,22 +196,48 @@ export function ObjectivesPage() {
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col p-6 gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Objetivos</h1>
           <p className="text-sm text-muted-foreground">Metas e OKRs da equipe.</p>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            const title = window.prompt("Nome da coluna");
-            if (title) createColumnMutation.mutate(title);
-          }}
-        >
-          <Plus className="mr-1 h-3.5 w-3.5" />
-          Nova coluna
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select
+            value={sprintFilter}
+            onValueChange={(value) => {
+              if (value === "new") {
+                const name = window.prompt("Nome da sprint (ex: Semana de 08 a 14/09)");
+                if (name) createSprintMutation.mutate(name);
+                return;
+              }
+              setSprintFilter(value);
+            }}
+          >
+            <SelectTrigger className="h-9 w-52">
+              <SelectValue placeholder="Todas as sprints" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as sprints</SelectItem>
+              {sprints.map((sprint) => (
+                <SelectItem key={sprint.id} value={sprint.id}>
+                  {sprint.name}
+                </SelectItem>
+              ))}
+              <SelectItem value="new">+ Nova sprint</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const title = window.prompt("Nome da coluna");
+              if (title) createColumnMutation.mutate(title);
+            }}
+          >
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            Nova coluna
+          </Button>
+        </div>
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
@@ -177,12 +246,15 @@ export function ObjectivesPage() {
             <div key={column.id} className="flex h-full flex-col gap-2">
               <ObjectiveColumn
                 column={column}
-                objectives={objectives
+                objectives={visibleObjectives
                   .filter((o) => o.columnId === column.id)
                   .sort((a, b) => a.order - b.order)}
                 onRename={(id, title) => renameColumnMutation.mutate({ id, title })}
                 onDelete={(id) => deleteColumnMutation.mutate(id)}
+                onToggleDone={(id, isDone) => toggleDoneMutation.mutate({ id, isDone })}
                 onOpenObjective={openDetail}
+                assigneeNameById={assigneeNameById}
+                sprintNameById={sprintNameById}
               />
               <button
                 onClick={() => createObjectiveMutation.mutate(column.id)}
@@ -194,7 +266,16 @@ export function ObjectivesPage() {
           ))}
         </div>
 
-        <DragOverlay>{activeObjective && <ObjectiveCard objective={activeObjective} overlay />}</DragOverlay>
+        <DragOverlay>
+          {activeObjective && (
+            <ObjectiveCard
+              objective={activeObjective}
+              overlay
+              assigneeName={activeObjective.assignedUserId ? assigneeNameById[activeObjective.assignedUserId] : null}
+              sprintName={activeObjective.sprintId ? sprintNameById[activeObjective.sprintId] : null}
+            />
+          )}
+        </DragOverlay>
       </DndContext>
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
@@ -218,10 +299,24 @@ export function ObjectivesPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Responsável</Label>
-                <Input
-                  value={draft.owner ?? ""}
-                  onChange={(e) => setDraft((d) => ({ ...d, owner: e.target.value }))}
-                />
+                <Select
+                  value={draft.assignedUserId ?? "none"}
+                  onValueChange={(value) =>
+                    setDraft((d) => ({ ...d, assignedUserId: value === "none" ? null : value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Ninguém" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Ninguém</SelectItem>
+                    {teamUsers.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.name || user.username || user.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Prazo</Label>
@@ -231,6 +326,25 @@ export function ObjectivesPage() {
                   onChange={(e) => setDraft((d) => ({ ...d, dueDate: e.target.value || null }))}
                 />
               </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Sprint</Label>
+              <Select
+                value={draft.sprintId ?? "none"}
+                onValueChange={(value) => setDraft((d) => ({ ...d, sprintId: value === "none" ? null : value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Nenhuma" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhuma</SelectItem>
+                  {sprints.map((sprint) => (
+                    <SelectItem key={sprint.id} value={sprint.id}>
+                      {sprint.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
@@ -297,9 +411,10 @@ export function ObjectivesPage() {
                   patch: {
                     title: draft.title,
                     description: draft.description,
-                    owner: draft.owner,
                     dueDate: draft.dueDate,
                     progress: draft.progress,
+                    assignedUserId: draft.assignedUserId,
+                    sprintId: draft.sprintId,
                   },
                 })
               }

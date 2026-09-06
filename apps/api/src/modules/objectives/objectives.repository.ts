@@ -5,6 +5,7 @@ export interface ObjectiveColumnRow {
   title: string;
   color: string;
   order: number;
+  is_done: boolean;
   created_at: string;
 }
 
@@ -19,8 +20,18 @@ export interface ObjectiveRow {
   owner: string | null;
   order: number;
   linked_page_id: string | null;
+  sprint_id: string | null;
+  assigned_user_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SprintRow {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  created_at: string;
 }
 
 export async function listColumns(): Promise<ObjectiveColumnRow[]> {
@@ -45,7 +56,10 @@ export async function createColumn(title: string): Promise<ObjectiveColumnRow> {
   return data;
 }
 
-export async function updateColumn(id: string, patch: { title?: string; color?: string }): Promise<ObjectiveColumnRow> {
+export async function updateColumn(
+  id: string,
+  patch: { title?: string; color?: string; is_done?: boolean },
+): Promise<ObjectiveColumnRow> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("objective_columns")
@@ -131,5 +145,32 @@ export async function update(id: string, patch: Record<string, unknown>): Promis
 export async function remove(id: string): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("objectives").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function findAllSprints(): Promise<SprintRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("sprints")
+    .select("*")
+    .order("start_date", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function createSprint(input: { name: string; startDate: string; endDate: string }): Promise<SprintRow> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("sprints")
+    .insert([{ name: input.name, start_date: input.startDate, end_date: input.endDate }])
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function deleteSprint(id: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("sprints").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }

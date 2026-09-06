@@ -24,6 +24,7 @@ import { runDispatchTick } from "./workers/prospector/dispatcher.worker";
 import { buildTodayQueueForAllCampaigns } from "./workers/prospector/queue-builder.worker";
 import { runSessionTick } from "./workers/prospector/session.worker";
 import { runFlowTick } from "./workers/prospector/flow-engine";
+import { runMorningReminder, runEveningReminder } from "./workers/goals/reminder.worker";
 
 const app = Fastify({
   logger: true,
@@ -137,6 +138,8 @@ async function bootstrap() {
 
     // 6. Bot de prospecção: dispatcher a cada 60s + builder diário às 07:45
     setupProspectorScheduler();
+    // 7. Lembretes de objetivos no WhatsApp: manhã (08:00) e fim de tarde (18:00)
+    setupGoalsScheduler();
   } catch (err) {
     app.log.error(err);
     process.exit(1);
@@ -160,6 +163,26 @@ function setupProspectorScheduler() {
     if (isBuildTime && lastBuildDate !== today) {
       lastBuildDate = today;
       buildTodayQueueForAllCampaigns().catch((err) => app.log.error({ err }, "[PROSPECTOR] Falha ao construir fila diária"));
+    }
+  }, 60_000);
+}
+
+function setupGoalsScheduler() {
+  let lastMorningSentDate: string | null = null;
+  let lastEveningSentDate: string | null = null;
+
+  setInterval(() => {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+
+    if (now.getHours() === 8 && now.getMinutes() === 0 && lastMorningSentDate !== today) {
+      lastMorningSentDate = today;
+      runMorningReminder().catch((err) => app.log.error({ err }, "[GOALS] Falha no lembrete da manhã"));
+    }
+
+    if (now.getHours() === 18 && now.getMinutes() === 0 && lastEveningSentDate !== today) {
+      lastEveningSentDate = today;
+      runEveningReminder().catch((err) => app.log.error({ err }, "[GOALS] Falha no lembrete da tarde"));
     }
   }, 60_000);
 }

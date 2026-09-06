@@ -9,7 +9,7 @@ export async function createColumnService(title: string) {
   return objectivesRepository.createColumn(title.trim());
 }
 
-export async function updateColumnService(id: string, patch: { title?: string; color?: string }) {
+export async function updateColumnService(id: string, patch: { title?: string; color?: string; is_done?: boolean }) {
   return objectivesRepository.updateColumn(id, patch);
 }
 
@@ -51,4 +51,18 @@ export async function updateObjectiveService(id: string, patch: Record<string, u
 
 export async function deleteObjectiveService(id: string) {
   await objectivesRepository.remove(id);
+}
+
+export async function listSprintsService() {
+  return objectivesRepository.findAllSprints();
+}
+
+export async function createSprintService(input: { name: string; startDate: string; endDate: string }) {
+  if (!input.name?.trim()) throw new Error("Informe um nome para a sprint.");
+  if (!input.startDate || !input.endDate) throw new Error("Informe o período da sprint.");
+  return objectivesRepository.createSprint({ ...input, name: input.name.trim() });
+}
+
+export async function deleteSprintService(id: string) {
+  await objectivesRepository.deleteSprint(id);
 }

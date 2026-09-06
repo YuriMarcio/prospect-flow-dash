@@ -9,6 +9,9 @@ import {
   createObjectiveController,
   updateObjectiveController,
   deleteObjectiveController,
+  listSprintsController,
+  createSprintController,
+  deleteSprintController,
 } from "./objectives.controller";
 
 export async function objectivesRoutes(app: FastifyInstance) {
@@ -17,6 +20,10 @@ export async function objectivesRoutes(app: FastifyInstance) {
   app.patch("/columns/reorder", reorderColumnsController);
   app.patch("/columns/:id", updateColumnController);
   app.delete("/columns/:id", deleteColumnController);
+
+  app.get("/sprints", listSprintsController);
+  app.post("/sprints", createSprintController);
+  app.delete("/sprints/:id", deleteSprintController);
 
   app.get("/", listObjectivesController);
   app.post("/", createObjectiveController);
