@@ -17,6 +17,9 @@ import { prospectingCampaignsRoutes } from "./modules/prospecting-campaigns/pros
 import { flowTemplatesRoutes } from "./modules/flow-templates/flow-templates.routes";
 import { vaultAuthRoutes } from "./modules/vault-auth/vault-auth.routes";
 import { vaultRoutes } from "./modules/vault/vault.routes";
+import { workspaceRoutes } from "./modules/workspace/workspace.routes";
+import { mindMapsRoutes } from "./modules/mind-maps/mind-maps.routes";
+import { objectivesRoutes } from "./modules/objectives/objectives.routes";
 import { runDispatchTick } from "./workers/prospector/dispatcher.worker";
 import { buildTodayQueueForAllCampaigns } from "./workers/prospector/queue-builder.worker";
 import { runSessionTick } from "./workers/prospector/session.worker";
@@ -121,6 +124,9 @@ async function bootstrap() {
     await app.register(flowTemplatesRoutes, { prefix: "/flow-templates" });
     await app.register(vaultAuthRoutes, { prefix: "/vault-auth" });
     await app.register(vaultRoutes, { prefix: "/vault" });
+    await app.register(workspaceRoutes, { prefix: "/workspace" });
+    await app.register(mindMapsRoutes, { prefix: "/mind-maps" });
+    await app.register(objectivesRoutes, { prefix: "/objectives" });
 
     // 5. Iniciando o servidor
     // O host "0.0.0.0" é importante se for rodar em Docker ou cloud depois

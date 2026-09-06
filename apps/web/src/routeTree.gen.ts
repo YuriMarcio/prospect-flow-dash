@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as SenhasRouteImport } from './routes/senhas'
+import { Route as ObjetivosRouteImport } from './routes/objetivos'
+import { Route as MapasMentaisRouteImport } from './routes/mapas-mentais'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeadsRouteImport } from './routes/leads'
 import { Route as KanbanRouteImport } from './routes/kanban'
@@ -20,6 +22,8 @@ import { Route as AutomacaoRouteImport } from './routes/automacao'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as MapasMentaisIndexRouteImport } from './routes/mapas-mentais.index'
+import { Route as MapasMentaisBoardIdRouteImport } from './routes/mapas-mentais.$boardId'
 
 const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/workspace',
@@ -29,6 +33,16 @@ const WorkspaceRoute = WorkspaceRouteImport.update({
 const SenhasRoute = SenhasRouteImport.update({
   id: '/senhas',
   path: '/senhas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ObjetivosRoute = ObjetivosRouteImport.update({
+  id: '/objetivos',
+  path: '/objetivos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MapasMentaisRoute = MapasMentaisRouteImport.update({
+  id: '/mapas-mentais',
+  path: '/mapas-mentais',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -76,6 +90,16 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MapasMentaisIndexRoute = MapasMentaisIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => MapasMentaisRoute,
+} as any)
+const MapasMentaisBoardIdRoute = MapasMentaisBoardIdRouteImport.update({
+  id: '/$boardId',
+  path: '/$boardId',
+  getParentRoute: () => MapasMentaisRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -87,8 +111,12 @@ export interface FileRoutesByFullPath {
   '/kanban': typeof KanbanRoute
   '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
+  '/mapas-mentais': typeof MapasMentaisRouteWithChildren
+  '/objetivos': typeof ObjetivosRoute
   '/senhas': typeof SenhasRoute
   '/workspace': typeof WorkspaceRoute
+  '/mapas-mentais/$boardId': typeof MapasMentaisBoardIdRoute
+  '/mapas-mentais/': typeof MapasMentaisIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -100,8 +128,11 @@ export interface FileRoutesByTo {
   '/kanban': typeof KanbanRoute
   '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
+  '/objetivos': typeof ObjetivosRoute
   '/senhas': typeof SenhasRoute
   '/workspace': typeof WorkspaceRoute
+  '/mapas-mentais/$boardId': typeof MapasMentaisBoardIdRoute
+  '/mapas-mentais': typeof MapasMentaisIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -114,8 +145,12 @@ export interface FileRoutesById {
   '/kanban': typeof KanbanRoute
   '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
+  '/mapas-mentais': typeof MapasMentaisRouteWithChildren
+  '/objetivos': typeof ObjetivosRoute
   '/senhas': typeof SenhasRoute
   '/workspace': typeof WorkspaceRoute
+  '/mapas-mentais/$boardId': typeof MapasMentaisBoardIdRoute
+  '/mapas-mentais/': typeof MapasMentaisIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -129,8 +164,12 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/leads'
     | '/login'
+    | '/mapas-mentais'
+    | '/objetivos'
     | '/senhas'
     | '/workspace'
+    | '/mapas-mentais/$boardId'
+    | '/mapas-mentais/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -142,8 +181,11 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/leads'
     | '/login'
+    | '/objetivos'
     | '/senhas'
     | '/workspace'
+    | '/mapas-mentais/$boardId'
+    | '/mapas-mentais'
   id:
     | '__root__'
     | '/'
@@ -155,8 +197,12 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/leads'
     | '/login'
+    | '/mapas-mentais'
+    | '/objetivos'
     | '/senhas'
     | '/workspace'
+    | '/mapas-mentais/$boardId'
+    | '/mapas-mentais/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -169,6 +215,8 @@ export interface RootRouteChildren {
   KanbanRoute: typeof KanbanRoute
   LeadsRoute: typeof LeadsRoute
   LoginRoute: typeof LoginRoute
+  MapasMentaisRoute: typeof MapasMentaisRouteWithChildren
+  ObjetivosRoute: typeof ObjetivosRoute
   SenhasRoute: typeof SenhasRoute
   WorkspaceRoute: typeof WorkspaceRoute
 }
@@ -187,6 +235,20 @@ declare module '@tanstack/react-router' {
       path: '/senhas'
       fullPath: '/senhas'
       preLoaderRoute: typeof SenhasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/objetivos': {
+      id: '/objetivos'
+      path: '/objetivos'
+      fullPath: '/objetivos'
+      preLoaderRoute: typeof ObjetivosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mapas-mentais': {
+      id: '/mapas-mentais'
+      path: '/mapas-mentais'
+      fullPath: '/mapas-mentais'
+      preLoaderRoute: typeof MapasMentaisRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -252,8 +314,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mapas-mentais/': {
+      id: '/mapas-mentais/'
+      path: '/'
+      fullPath: '/mapas-mentais/'
+      preLoaderRoute: typeof MapasMentaisIndexRouteImport
+      parentRoute: typeof MapasMentaisRoute
+    }
+    '/mapas-mentais/$boardId': {
+      id: '/mapas-mentais/$boardId'
+      path: '/$boardId'
+      fullPath: '/mapas-mentais/$boardId'
+      preLoaderRoute: typeof MapasMentaisBoardIdRouteImport
+      parentRoute: typeof MapasMentaisRoute
+    }
   }
 }
+
+interface MapasMentaisRouteChildren {
+  MapasMentaisBoardIdRoute: typeof MapasMentaisBoardIdRoute
+  MapasMentaisIndexRoute: typeof MapasMentaisIndexRoute
+}
+
+const MapasMentaisRouteChildren: MapasMentaisRouteChildren = {
+  MapasMentaisBoardIdRoute: MapasMentaisBoardIdRoute,
+  MapasMentaisIndexRoute: MapasMentaisIndexRoute,
+}
+
+const MapasMentaisRouteWithChildren = MapasMentaisRoute._addFileChildren(
+  MapasMentaisRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -265,6 +355,8 @@ const rootRouteChildren: RootRouteChildren = {
   KanbanRoute: KanbanRoute,
   LeadsRoute: LeadsRoute,
   LoginRoute: LoginRoute,
+  MapasMentaisRoute: MapasMentaisRouteWithChildren,
+  ObjetivosRoute: ObjetivosRoute,
   SenhasRoute: SenhasRoute,
   WorkspaceRoute: WorkspaceRoute,
 }

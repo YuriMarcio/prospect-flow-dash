@@ -50,6 +50,8 @@ export interface WorkspacePage {
   favorite: boolean;
   order: number;
   blocks: Block[];
+  /** Mapa mental vinculado a essa página (ver /mapas-mentais). */
+  linkedBoardId?: string | null;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;

@@ -1,20 +1,34 @@
 import { useEffect, useState } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Minimize2 } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
+import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { WorkspaceSidebar } from "@/components/workspace/WorkspaceSidebar";
 import { DocumentEditor } from "@/components/workspace/DocumentEditor";
 import { WorkspaceHome } from "@/components/workspace/WorkspaceHome";
 import { CommandPalette } from "@/components/workspace/CommandPalette";
 
 export function WorkspacePage() {
+  useWorkspaceSync();
   const pages = useWorkspaceStore((s) => s.pages);
   const createPage = useWorkspaceStore((s) => s.createPage);
   const deletePage = useWorkspaceStore((s) => s.deletePage);
   const touchRecent = useWorkspaceStore((s) => s.touchRecent);
 
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { pageId } = useSearch({ from: "/workspace" });
+  const [activeId, setActiveId] = useState<string | null>(pageId ?? null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+
+  // Deep-link vindo de fora (ex: chip "vincular página" no Kanban de objetivos)
+  useEffect(() => {
+    if (pageId && pageId !== activeId) {
+      setActiveId(pageId);
+      touchRecent(pageId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage a mudanças externas de pageId, não a activeId
+  }, [pageId]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -30,6 +44,7 @@ export function WorkspacePage() {
   function handleSelect(id: string) {
     setActiveId(id || null);
     if (id) touchRecent(id);
+    navigate({ to: "/workspace", search: id ? { pageId: id } : {}, replace: true });
   }
 
   function handleCreate(parentId: string | null = null) {
@@ -39,7 +54,7 @@ export function WorkspacePage() {
 
   function handleDelete(id: string) {
     deletePage(id);
-    setActiveId(null);
+    handleSelect("");
   }
 
   function breadcrumbFor(id: string): string[] {
