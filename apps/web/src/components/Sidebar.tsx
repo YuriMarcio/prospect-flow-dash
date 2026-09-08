@@ -1,8 +1,9 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, Users, KanbanSquare, CalendarClock, Bot, Download, BarChart3, Settings, Sparkles, Lock, NotebookText, Network, Target,
+  LayoutDashboard, Users, KanbanSquare, CalendarClock, Bot, Download, BarChart3, Settings, Sparkles, Lock, NotebookText, Network, Target, MonitorDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePwaInstallStore, triggerPwaInstall } from "@/store/pwaInstall";
 
 const items = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -21,6 +22,7 @@ const items = [
 
 export function Sidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const canInstall = usePwaInstallStore((s) => Boolean(s.deferredPrompt));
 
   return (
     <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
@@ -54,6 +56,18 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {canInstall && (
+        <div className="px-3 pb-4">
+          <button
+            onClick={() => triggerPwaInstall()}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all hover:bg-sidebar-accent/60 hover:text-foreground"
+          >
+            <MonitorDown className="h-4 w-4" />
+            Instalar app
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

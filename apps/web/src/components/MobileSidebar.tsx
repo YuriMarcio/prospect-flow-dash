@@ -1,9 +1,10 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, Users, KanbanSquare, CalendarClock, Bot, Download, BarChart3, Settings, Sparkles, Lock, NotebookText, Network, Target, X,
+  LayoutDashboard, Users, KanbanSquare, CalendarClock, Bot, Download, BarChart3, Settings, Sparkles, Lock, NotebookText, Network, Target, X, MonitorDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMobileSidebarStore } from "@/store/mobileSidebar";
+import { usePwaInstallStore, triggerPwaInstall } from "@/store/pwaInstall";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
@@ -26,6 +27,7 @@ const items = [
 export function MobileSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { open, setOpen } = useMobileSidebarStore();
+  const canInstall = usePwaInstallStore((s) => Boolean(s.deferredPrompt));
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -65,6 +67,21 @@ export function MobileSidebar() {
             );
           })}
         </nav>
+
+        {canInstall && (
+          <div className="px-3 pb-4">
+            <button
+              onClick={() => {
+                setOpen(false);
+                triggerPwaInstall();
+              }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:bg-sidebar-accent/60 hover:text-foreground"
+            >
+              <MonitorDown className="h-4 w-4" />
+              Instalar app
+            </button>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );
