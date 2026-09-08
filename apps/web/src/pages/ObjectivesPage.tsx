@@ -32,6 +32,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { useObjectivesStore } from "@/store/objectives";
 import { useObjectivesSync } from "@/hooks/use-objectives-sync";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -70,6 +71,7 @@ export function ObjectivesPage() {
   const [draft, setDraft] = useState<Partial<Objective>>({});
   const [pagePickerOpen, setPagePickerOpen] = useState(false);
   const [sprintFilter, setSprintFilter] = useState<string>("all");
+  const [mobileColumnId, setMobileColumnId] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -183,6 +185,7 @@ export function ObjectivesPage() {
   const visibleObjectives =
     sprintFilter === "all" ? objectives : objectives.filter((o) => o.sprintId === sprintFilter);
   const activeObjective = activeId ? visibleObjectives.find((o) => o.id === activeId) : null;
+  const activeMobileColumnId = mobileColumnId ?? sorted[0]?.id ?? null;
 
   const assigneeNameById = Object.fromEntries(
     teamUsers.map((user) => [user.id, user.name || user.username || user.id]),
@@ -195,8 +198,8 @@ export function ObjectivesPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col p-6 gap-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className="relative flex h-[calc(100vh-4rem)] flex-col p-4 md:p-6 gap-3 md:gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Objetivos</h1>
           <p className="text-sm text-muted-foreground">Metas e OKRs da equipe.</p>
@@ -213,7 +216,7 @@ export function ObjectivesPage() {
               setSprintFilter(value);
             }}
           >
-            <SelectTrigger className="h-9 w-52">
+            <SelectTrigger className="h-9 w-44 sm:w-52">
               <SelectValue placeholder="Todas as sprints" />
             </SelectTrigger>
             <SelectContent>
@@ -229,6 +232,7 @@ export function ObjectivesPage() {
           <Button
             size="sm"
             variant="outline"
+            className="hidden md:inline-flex"
             onClick={() => {
               const title = window.prompt("Nome da coluna");
               if (title) createColumnMutation.mutate(title);
@@ -240,10 +244,36 @@ export function ObjectivesPage() {
         </div>
       </div>
 
+      {/* Abas de coluna só no celular — no desktop as colunas já ficam lado a lado */}
+      <div className="md:hidden flex items-center gap-4 border-b border-border overflow-x-auto -mx-4 px-4">
+        {sorted.map((column) => {
+          const count = visibleObjectives.filter((o) => o.columnId === column.id).length;
+          const active = column.id === activeMobileColumnId;
+          return (
+            <button
+              key={column.id}
+              onClick={() => setMobileColumnId(column.id)}
+              className={cn(
+                "shrink-0 whitespace-nowrap border-b-2 pb-2 -mb-px text-sm font-medium transition-colors",
+                active ? "border-primary text-foreground" : "border-transparent text-muted-foreground",
+              )}
+            >
+              {column.title} ({count})
+            </button>
+          );
+        })}
+      </div>
+
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <div className="flex flex-1 min-h-0 gap-3 overflow-x-auto pb-2">
           {sorted.map((column) => (
-            <div key={column.id} className="flex h-full flex-col gap-2">
+            <div
+              key={column.id}
+              className={cn(
+                "h-full flex-col gap-2 w-full md:w-auto",
+                column.id === activeMobileColumnId ? "flex" : "hidden md:flex",
+              )}
+            >
               <ObjectiveColumn
                 column={column}
                 objectives={visibleObjectives
@@ -258,7 +288,7 @@ export function ObjectivesPage() {
               />
               <button
                 onClick={() => createObjectiveMutation.mutate(column.id)}
-                className="flex items-center justify-center gap-1 rounded-md border border-dashed border-border py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40"
+                className="hidden md:flex items-center justify-center gap-1 rounded-md border border-dashed border-border py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40"
               >
                 <Plus className="h-3 w-3" /> Novo objetivo
               </button>
@@ -278,6 +308,16 @@ export function ObjectivesPage() {
         </DragOverlay>
       </DndContext>
 
+      {activeMobileColumnId && (
+        <button
+          onClick={() => createObjectiveMutation.mutate(activeMobileColumnId)}
+          className="md:hidden fixed bottom-6 right-6 z-20 flex items-center gap-2 rounded-full bg-primary pl-4 pr-5 py-3 text-sm font-medium text-primary-foreground shadow-lg active:scale-95 transition-transform"
+        >
+          <Plus className="h-4 w-4" />
+          Novo Objetivo
+        </button>
+      )}
+
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -296,7 +336,7 @@ export function ObjectivesPage() {
                 onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Responsável</Label>
                 <Select
