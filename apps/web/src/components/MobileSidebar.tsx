@@ -39,8 +39,8 @@ export function MobileSidebar() {
             <Sparkles className="h-5 w-5" />
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">ProspectAI</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">CRM Cold Call</span>
+            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">Zapediu</span>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Workflow</span>
           </div>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
