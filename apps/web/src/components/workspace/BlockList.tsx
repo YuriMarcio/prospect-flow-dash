@@ -37,6 +37,70 @@ function emptyBlock(type: BlockType = "paragraph"): Block {
   return { id: crypto.randomUUID(), type, content: "" };
 }
 
+// Tipos que usam EditableBlockText (texto puro, um único nó de texto no
+// contentEditable) — são os únicos elegíveis pra navegação com seta e
+// junção com Backspace; imagem/arquivo/tabela/código/callout/divider têm
+// um "conteúdo" de formato diferente e ficam de fora.
+const TEXTUAL_TYPES: BlockType[] = [
+  "paragraph", "h1", "h2", "h3", "bullet", "number", "todo", "quote", "link",
+];
+
+function placeCaret(el: HTMLElement, pos: "start" | "end" | number) {
+  const range = document.createRange();
+  if (typeof pos === "number") {
+    const textNode = el.firstChild;
+    if (textNode) {
+      range.setStart(textNode, Math.min(pos, textNode.textContent?.length ?? 0));
+      range.collapse(true);
+    } else {
+      range.selectNodeContents(el);
+      range.collapse(true);
+    }
+  } else {
+    range.selectNodeContents(el);
+    range.collapse(pos === "start");
+  }
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+}
+
+// Compara o retângulo do cursor colapsado com o retângulo da primeira/última
+// linha do próprio elemento — assim ArrowUp/ArrowDown só saltam de bloco
+// quando o cursor já está na borda visual do texto (e não no meio de um
+// parágrafo que quebra em várias linhas).
+function caretLineEdges(el: HTMLElement): { atFirstLine: boolean; atLastLine: boolean } {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return { atFirstLine: true, atLastLine: true };
+
+  const caretRange = sel.getRangeAt(0).cloneRange();
+  caretRange.collapse(true);
+  const caretRect = caretRange.getClientRects()[0];
+
+  const fullRange = document.createRange();
+  fullRange.selectNodeContents(el);
+  const lineRects = Array.from(fullRange.getClientRects());
+
+  if (!caretRect || lineRects.length === 0) return { atFirstLine: true, atLastLine: true };
+
+  const firstLine = lineRects[0];
+  const lastLine = lineRects[lineRects.length - 1];
+  return {
+    atFirstLine: caretRect.top < firstLine.bottom,
+    atLastLine: caretRect.bottom > lastLine.top,
+  };
+}
+
+function isCaretAtStart(el: HTMLElement): boolean {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+  const range = sel.getRangeAt(0);
+  const preRange = document.createRange();
+  preRange.selectNodeContents(el);
+  preRange.setEnd(range.startContainer, range.startOffset);
+  return preRange.toString().length === 0;
+}
+
 export function BlockList({ page, onNavigate }: { page: WorkspacePage; onNavigate: (id: string) => void }) {
   const updateBlocks = useWorkspaceStore((s) => s.updateBlocks);
   const createPage = useWorkspaceStore((s) => s.createPage);
@@ -44,7 +108,7 @@ export function BlockList({ page, onNavigate }: { page: WorkspacePage; onNavigat
   const [blocks, setBlocks] = useState<Block[]>(page.blocks);
   const blockRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [slash, setSlash] = useState<SlashState | null>(null);
-  const pendingFocus = useRef<{ id: string; pos: "start" | "end" } | null>(null);
+  const pendingFocus = useRef<{ id: string; pos: "start" | "end" | number; textOverride?: string } | null>(null);
 
   useEffect(() => {
     setBlocks(page.blocks.length ? page.blocks : [emptyBlock()]);
@@ -56,16 +120,23 @@ export function BlockList({ page, onNavigate }: { page: WorkspacePage; onNavigat
     if (!pending) return;
     const el = blockRefs.current.get(pending.id);
     if (el) {
+      // Junção de blocos (Backspace) muda o conteúdo de um bloco que não
+      // teve seu id trocado — EditableBlockText só resincroniza o DOM ao
+      // trocar de blockId, então escrevemos o texto final aqui na mão antes
+      // de posicionar o cursor.
+      if (pending.textOverride !== undefined) el.textContent = pending.textOverride;
       el.focus();
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(pending.pos === "start");
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
+      placeCaret(el, pending.pos);
     }
     pendingFocus.current = null;
   });
+
+  function focusBlockNow(id: string, pos: "start" | "end") {
+    const el = blockRefs.current.get(id);
+    if (!el) return;
+    el.focus();
+    placeCaret(el, pos);
+  }
 
   function commit(next: Block[]) {
     setBlocks(next);
@@ -193,11 +264,46 @@ export function BlockList({ page, onNavigate }: { page: WorkspacePage; onNavigat
       return;
     }
 
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && TEXTUAL_TYPES.includes(block.type)) {
+      const { atFirstLine, atLastLine } = caretLineEdges(e.currentTarget);
+      const index = blocks.findIndex((b) => b.id === block.id);
+      if (e.key === "ArrowUp" && atFirstLine) {
+        const prev = blocks[index - 1];
+        if (prev) {
+          e.preventDefault();
+          focusBlockNow(prev.id, "end");
+        }
+        return;
+      }
+      if (e.key === "ArrowDown" && atLastLine) {
+        const next = blocks[index + 1];
+        if (next) {
+          e.preventDefault();
+          focusBlockNow(next.id, "start");
+        }
+        return;
+      }
+    }
+
     if (e.key === "Backspace") {
       const isEmpty = (e.currentTarget.textContent ?? "") === "";
       if (isEmpty && blocks.length > 1) {
         e.preventDefault();
         removeBlock(block.id);
+        return;
+      }
+      if (!isEmpty && TEXTUAL_TYPES.includes(block.type) && isCaretAtStart(e.currentTarget)) {
+        const index = blocks.findIndex((b) => b.id === block.id);
+        const prev = blocks[index - 1];
+        if (prev && TEXTUAL_TYPES.includes(prev.type)) {
+          e.preventDefault();
+          const mergeOffset = prev.content.length;
+          const mergedContent = prev.content + block.content;
+          commit(
+            blocks.filter((b) => b.id !== block.id).map((b) => (b.id === prev.id ? { ...b, content: mergedContent } : b)),
+          );
+          pendingFocus.current = { id: prev.id, pos: mergeOffset, textOverride: mergedContent };
+        }
       }
     }
   }

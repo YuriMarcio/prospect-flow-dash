@@ -2,16 +2,17 @@ import { useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FileDown, ImagePlus, MoreHorizontal, Network, Share2, Smile, Star, Trash2, X } from "lucide-react";
+import { FileDown, ImagePlus, MoreHorizontal, Network, Paperclip, Share2, Smile, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useWorkspaceStore } from "@/store/workspace";
 import type { WorkspacePage } from "@/lib/workspaceTypes";
 import { CURRENT_USER, OTHER_USER } from "@/lib/workspaceTypes";
-import { useTimeAgo } from "@/lib/workspaceUtils";
+import { useTimeAgo, formatBytes } from "@/lib/workspaceUtils";
 import { getMindMap } from "@/lib/mindMaps";
 import { markdownToBlocks } from "@/lib/markdownToBlocks";
+import { uploadWorkspaceFile } from "@/lib/workspaceApi";
 import { BlockList } from "./BlockList";
 import { MindMapPicker } from "./MindMapPicker";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,36 @@ export function DocumentEditor({
   const updatedLabel = useTimeAgo(page.updatedAt);
   const navigate = useNavigate();
   const [mindMapPickerOpen, setMindMapPickerOpen] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const dragCounter = useRef(0);
+
+  // Soltar um arquivo em qualquer ponto da página anexa ele no fim do
+  // documento — os blocos de arquivo/imagem já tratam o próprio drop
+  // (com stopPropagation), então isso só dispara quando o usuário solta
+  // fora de um bloco de arquivo/imagem existente.
+  async function handleDropFile(file: File) {
+    try {
+      const result = await uploadWorkspaceFile(file);
+      updateBlocks(page.id, [
+        ...page.blocks,
+        {
+          id: crypto.randomUUID(),
+          type: "file",
+          content: "",
+          fileMeta: {
+            name: result.name,
+            sizeLabel: formatBytes(result.sizeBytes),
+            url: result.url,
+            mimeType: result.mimeType,
+            source: "upload",
+          },
+        },
+      ]);
+      toast.success(`${file.name} anexado.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao anexar arquivo.");
+    }
+  }
 
   async function handleImportMarkdown(file: File) {
     try {
@@ -64,7 +95,47 @@ export function DocumentEditor({
   });
 
   return (
-    <div className="mx-auto w-full max-w-225 px-8 py-10">
+    <div
+      className="relative mx-auto w-full max-w-225 px-8 py-10"
+      onDragEnter={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        dragCounter.current += 1;
+        setDragActive(true);
+      }}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+      }}
+      onDragLeave={() => {
+        dragCounter.current -= 1;
+        if (dragCounter.current <= 0) {
+          dragCounter.current = 0;
+          setDragActive(false);
+        }
+      }}
+      // Fase de captura: roda antes do onDrop de um bloco de arquivo/imagem
+      // aninhado, então limpa o overlay mesmo quando aquele bloco chama
+      // stopPropagation() (senão o "Solte para anexar" fica preso na tela
+      // pra sempre depois de soltar em cima de um bloco já existente).
+      onDropCapture={() => {
+        dragCounter.current = 0;
+        setDragActive(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files?.[0];
+        if (file) handleDropFile(file);
+      }}
+    >
+      {dragActive && (
+        <div className="pointer-events-none absolute inset-2 z-20 grid place-items-center rounded-xl border-2 border-dashed border-primary bg-primary/5">
+          <div className="flex items-center gap-2 text-sm font-medium text-primary">
+            <Paperclip className="h-4 w-4" />
+            Solte para anexar à página
+          </div>
+        </div>
+      )}
       {cover && (
         <div className="relative -mx-8 -mt-10 mb-8 h-48 group/cover">
           <img src={cover} alt="" className="w-full h-full object-cover" />

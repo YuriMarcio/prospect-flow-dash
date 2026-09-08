@@ -28,11 +28,28 @@ export function ImageBlock({
   onCaptionKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
 }) {
   const [urlInput, setUrlInput] = useState("");
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!block.imageUrl) {
     return (
-      <div className="rounded-lg border-2 border-dashed border-border p-8 flex flex-col items-center gap-3 text-center">
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation(); // não deixa a página criar outro bloco pro mesmo drop
+          setDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) onSetImage(URL.createObjectURL(file));
+        }}
+        className={`rounded-lg border-2 border-dashed p-8 flex flex-col items-center gap-3 text-center transition-colors ${
+          dragOver ? "border-primary bg-primary/5" : "border-border"
+        }`}
+      >
         <ImageIcon className="h-8 w-8 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">Arraste uma imagem aqui, ou</p>
         <input

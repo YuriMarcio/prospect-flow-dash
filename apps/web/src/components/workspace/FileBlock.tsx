@@ -1,19 +1,24 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Download, ExternalLink, FileText, Loader2, MoreHorizontal, Trash2, Upload } from "lucide-react";
+import { Download, ExternalLink, Expand, FileText, Loader2, MoreHorizontal, Trash2, Upload } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { uploadWorkspaceFile } from "@/lib/workspaceApi";
 import { isGoogleDriveConfigured, pickGoogleDriveFile } from "@/lib/googleDrivePicker";
+import { formatBytes } from "@/lib/workspaceUtils";
 import type { Block } from "@/lib/workspaceTypes";
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 const PDF_MIME = "application/pdf";
+
+// Link do Google Drive é /view (bom pra abrir no próprio Drive, com
+// comentários etc.), mas o Drive só permite embedar em iframe na variante
+// /preview — sem essa troca o preview inline simplesmente não carrega.
+function toEmbeddableUrl(fileMeta: NonNullable<Block["fileMeta"]>): string | null {
+  if (!fileMeta.url) return null;
+  if (fileMeta.source === "gdrive") return fileMeta.url.replace(/\/view(\?.*)?$/, "/preview");
+  return fileMeta.url;
+}
 
 export function FileBlock({
   block,
@@ -26,6 +31,8 @@ export function FileBlock({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   async function handleFileSelected(file: File) {
     setUploading(true);
@@ -64,7 +71,23 @@ export function FileBlock({
 
   if (!block.fileMeta) {
     return (
-      <div className="rounded-lg border-2 border-dashed border-border p-6 flex flex-col items-center gap-3 text-center">
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation(); // não deixa a página criar outro bloco de arquivo pro mesmo drop
+          setDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) handleFileSelected(file);
+        }}
+        className={`rounded-lg border-2 border-dashed p-6 flex flex-col items-center gap-3 text-center transition-colors ${
+          dragOver ? "border-primary bg-primary/5" : "border-border"
+        }`}
+      >
         {uploading ? (
           <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
         ) : (
@@ -97,6 +120,7 @@ export function FileBlock({
 
   const { fileMeta } = block;
   const isPdf = fileMeta.mimeType === PDF_MIME;
+  const embeddableUrl = isPdf ? toEmbeddableUrl(fileMeta) : null;
 
   return (
     <div className="space-y-2">
@@ -113,6 +137,15 @@ export function FileBlock({
             {fileMeta.source === "gdrive" && " · Google Drive"}
           </p>
         </div>
+        {isPdf && embeddableUrl && (
+          <button
+            title="Abrir"
+            onClick={() => setViewerOpen(true)}
+            className="h-7 w-7 grid place-items-center rounded hover:bg-accent shrink-0"
+          >
+            <Expand className="h-3.5 w-3.5" />
+          </button>
+        )}
         {fileMeta.url && (
           <a
             href={fileMeta.url}
@@ -138,8 +171,19 @@ export function FileBlock({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {isPdf && fileMeta.url && (
-        <iframe src={fileMeta.url} title={fileMeta.name} className="w-full h-125 rounded-lg border border-border" />
+      {isPdf && embeddableUrl && (
+        <iframe src={embeddableUrl} title={fileMeta.name} className="w-full h-125 rounded-lg border border-border" />
+      )}
+
+      {isPdf && embeddableUrl && (
+        <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
+          <DialogContent className="flex h-[90vh] w-[90vw] max-w-5xl flex-col">
+            <DialogHeader>
+              <DialogTitle className="truncate pr-6">{fileMeta.name}</DialogTitle>
+            </DialogHeader>
+            <iframe src={embeddableUrl} title={fileMeta.name} className="flex-1 rounded-lg border border-border" />
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
