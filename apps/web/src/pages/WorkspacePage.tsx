@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { Minimize2 } from "lucide-react";
+import { Minimize2, PanelLeft, Search } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { WorkspaceSidebar } from "@/components/workspace/WorkspaceSidebar";
 import { DocumentEditor } from "@/components/workspace/DocumentEditor";
 import { WorkspaceHome } from "@/components/workspace/WorkspaceHome";
 import { CommandPalette } from "@/components/workspace/CommandPalette";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 export function WorkspacePage() {
   useWorkspaceSync();
@@ -20,6 +21,7 @@ export function WorkspacePage() {
   const [activeId, setActiveId] = useState<string | null>(pageId ?? null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Deep-link vindo de fora (ex: chip "vincular página" no Kanban de objetivos)
   useEffect(() => {
@@ -45,6 +47,7 @@ export function WorkspacePage() {
     setActiveId(id || null);
     if (id) touchRecent(id);
     navigate({ to: "/workspace", search: id ? { pageId: id } : {}, replace: true });
+    setMobileNavOpen(false);
   }
 
   function handleCreate(parentId: string | null = null) {
@@ -72,32 +75,77 @@ export function WorkspacePage() {
   return (
     <div className="flex h-[calc(100vh-4rem)]">
       {!focusMode && (
-        <WorkspaceSidebar activeId={activeId} onSelect={handleSelect} onOpenSearch={() => setSearchOpen(true)} />
+        <div className="hidden md:flex">
+          <WorkspaceSidebar activeId={activeId} onSelect={handleSelect} onOpenSearch={() => setSearchOpen(true)} />
+        </div>
       )}
 
-      <div className="flex-1 overflow-y-auto relative animate-fade-in">
-        {focusMode && (
-          <button
-            onClick={() => setFocusMode(false)}
-            className="fixed top-4 right-4 z-20 flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent transition-colors shadow-lg"
-          >
-            <Minimize2 className="h-3.5 w-3.5" />
-            Sair do modo foco
-          </button>
+      {!focusMode && (
+        <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+          <SheetContent side="left" className="w-[280px] p-0">
+            <SheetHeader className="sr-only">
+              <SheetTitle>Páginas do Workspace</SheetTitle>
+              <SheetDescription>Lista e busca de páginas do Workspace</SheetDescription>
+            </SheetHeader>
+            <WorkspaceSidebar
+              activeId={activeId}
+              onSelect={handleSelect}
+              onOpenSearch={() => {
+                setMobileNavOpen(false);
+                setSearchOpen(true);
+              }}
+            />
+          </SheetContent>
+        </Sheet>
+      )}
+
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {!focusMode && (
+          <div className="md:hidden flex items-center gap-1 border-b border-border px-2 py-2 shrink-0">
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className="h-8 w-8 grid place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground shrink-0"
+              aria-label="Abrir páginas do Workspace"
+            >
+              <PanelLeft className="h-4 w-4" />
+            </button>
+            <span className="flex-1 min-w-0 truncate text-sm font-medium">
+              {activePage ? activePage.title || "Sem título" : "Workspace"}
+            </span>
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="h-8 w-8 grid place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground shrink-0"
+              aria-label="Buscar páginas"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          </div>
         )}
 
-        {activePage ? (
-          <DocumentEditor
-            page={activePage}
-            breadcrumb={breadcrumbFor(activePage.id)}
-            onDelete={() => handleDelete(activePage.id)}
-            onNavigate={handleSelect}
-            focusMode={focusMode}
-            onToggleFocus={() => setFocusMode((v) => !v)}
-          />
-        ) : (
-          <WorkspaceHome onOpen={handleSelect} onCreate={() => handleCreate(null)} />
-        )}
+        <div className="flex-1 overflow-y-auto relative animate-fade-in">
+          {focusMode && (
+            <button
+              onClick={() => setFocusMode(false)}
+              className="fixed top-4 right-4 z-20 flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent transition-colors shadow-lg"
+            >
+              <Minimize2 className="h-3.5 w-3.5" />
+              Sair do modo foco
+            </button>
+          )}
+
+          {activePage ? (
+            <DocumentEditor
+              page={activePage}
+              breadcrumb={breadcrumbFor(activePage.id)}
+              onDelete={() => handleDelete(activePage.id)}
+              onNavigate={handleSelect}
+              focusMode={focusMode}
+              onToggleFocus={() => setFocusMode((v) => !v)}
+            />
+          ) : (
+            <WorkspaceHome onOpen={handleSelect} onCreate={() => handleCreate(null)} />
+          )}
+        </div>
       </div>
 
       <CommandPalette

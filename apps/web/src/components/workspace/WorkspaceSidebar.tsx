@@ -392,7 +392,7 @@ function PageTreeNode({
         )}
 
         {!isRenaming && (
-          <div className="flex items-center gap-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity">
+          <div className="flex items-center gap-0.5 opacity-100 pointer-events-auto md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto transition-opacity">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button

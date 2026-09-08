@@ -374,7 +374,7 @@ function BlockRow({
 }) {
   return (
     <div className="group/block relative flex items-start gap-1 -ml-14 pl-14">
-      <div className="flex items-center gap-0.5 pt-1 opacity-0 group-hover/block:opacity-100 transition-opacity shrink-0">
+      <div className="flex items-center gap-0.5 pt-1 opacity-100 md:opacity-0 md:group-hover/block:opacity-100 transition-opacity shrink-0">
         <button
           onClick={onAddBelow}
           title="Adicionar bloco abaixo"

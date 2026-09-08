@@ -96,7 +96,7 @@ export function DocumentEditor({
 
   return (
     <div
-      className="relative mx-auto w-full max-w-225 px-8 py-10"
+      className="relative mx-auto w-full max-w-225 px-4 py-6 md:px-8 md:py-10"
       onDragEnter={(e) => {
         if (!e.dataTransfer.types.includes("Files")) return;
         e.preventDefault();
@@ -158,8 +158,8 @@ export function DocumentEditor({
         ))}
       </div>
 
-      <div className="group/header flex items-start justify-between gap-4 mb-1">
-        <div className="flex items-center gap-2 opacity-0 group-hover/header:opacity-100 transition-opacity">
+      <div className="group/header flex flex-wrap items-start justify-between gap-x-4 gap-y-2 mb-1">
+        <div className="flex flex-wrap items-center gap-2 opacity-100 md:opacity-0 md:group-hover/header:opacity-100 transition-opacity">
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground">
@@ -237,7 +237,7 @@ export function DocumentEditor({
           </Button>
           <Button variant="outline" size="sm" className="h-8">
             <Share2 className="h-3.5 w-3.5" />
-            Compartilhar
+            <span className="hidden sm:inline">Compartilhar</span>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -262,7 +262,7 @@ export function DocumentEditor({
         value={page.title}
         onChange={(e) => updatePageMeta(page.id, { title: e.target.value })}
         placeholder="Sem título"
-        className="w-full bg-transparent outline-none text-[40px] font-bold tracking-tight placeholder:text-muted-foreground/50 mb-2"
+        className="w-full bg-transparent outline-none text-3xl md:text-[40px] font-bold tracking-tight placeholder:text-muted-foreground/50 mb-2"
       />
 
       <input
