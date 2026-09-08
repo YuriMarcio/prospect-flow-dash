@@ -10,6 +10,7 @@ import {
   reorderSiblingsService,
   deletePageService,
 } from "./workspace.service";
+import { uploadWorkspaceFile } from "./files.repository";
 
 function updatedBy(request: FastifyRequest): string {
   return (request.user as { name?: string; username?: string }).name ?? "Alguém";
@@ -95,4 +96,29 @@ export async function deletePageController(
 ) {
   await deletePageService(request.params.id);
   return reply.status(204).send();
+}
+
+const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
+
+export async function uploadFileController(request: FastifyRequest, reply: FastifyReply) {
+  const file = await request.file({ limits: { fileSize: MAX_UPLOAD_BYTES } });
+  if (!file) return reply.status(400).send({ error: "Nenhum arquivo enviado." });
+
+  const buffer = await file.toBuffer();
+  if (buffer.length > MAX_UPLOAD_BYTES) {
+    return reply.status(413).send({ error: "Arquivo maior que 15MB." });
+  }
+
+  try {
+    const { url } = await uploadWorkspaceFile(file.filename, file.mimetype, buffer);
+    return reply.status(201).send({
+      url,
+      name: file.filename,
+      mimeType: file.mimetype,
+      sizeBytes: buffer.length,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return reply.status(500).send({ error: message });
+  }
 }

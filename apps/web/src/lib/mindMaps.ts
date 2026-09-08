@@ -7,12 +7,20 @@ export interface MindMapBoardSummary {
   updated_at: string;
 }
 
+export type MindMapNodeType = "note" | "shape" | "text" | "frame";
+export type MindMapShapeKind = "rectangle" | "circle" | "diamond";
+
 export interface ApiMindMapNode {
   id: string;
   label: string;
   color: string;
   position_x: number;
   position_y: number;
+  node_type: MindMapNodeType;
+  shape_kind?: MindMapShapeKind | null;
+  width?: number | null;
+  height?: number | null;
+  parent_id?: string | null;
 }
 
 export interface ApiMindMapEdge {

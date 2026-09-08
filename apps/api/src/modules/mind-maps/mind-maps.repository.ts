@@ -8,6 +8,9 @@ export interface MindMapBoardRow {
   updated_at: string;
 }
 
+export type MindMapNodeType = "note" | "shape" | "text" | "frame";
+export type MindMapShapeKind = "rectangle" | "circle" | "diamond";
+
 export interface MindMapNodeRow {
   id: string;
   board_id: string;
@@ -15,6 +18,11 @@ export interface MindMapNodeRow {
   color: string;
   position_x: number;
   position_y: number;
+  node_type: MindMapNodeType;
+  shape_kind: MindMapShapeKind | null;
+  width: number | null;
+  height: number | null;
+  parent_id: string | null;
   created_at: string;
 }
 
@@ -39,6 +47,11 @@ export interface MindMapNodeInput {
   color: string;
   position_x: number;
   position_y: number;
+  node_type: MindMapNodeType;
+  shape_kind?: MindMapShapeKind | null;
+  width?: number | null;
+  height?: number | null;
+  parent_id?: string | null;
 }
 
 export interface MindMapEdgeInput {
@@ -139,6 +152,11 @@ export async function replaceGraph(
       color: node.color,
       position_x: node.position_x,
       position_y: node.position_y,
+      node_type: node.node_type,
+      shape_kind: node.shape_kind ?? null,
+      width: node.width ?? null,
+      height: node.height ?? null,
+      parent_id: node.parent_id ?? null,
     }));
     const { error } = await supabase.from("mind_map_nodes").upsert(rows, { onConflict: "id" });
     if (error) throw new Error(error.message);

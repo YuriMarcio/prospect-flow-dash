@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ImagePlus, MoreHorizontal, Network, Share2, Smile, Star, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
+import { FileDown, ImagePlus, MoreHorizontal, Network, Share2, Smile, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -10,6 +11,7 @@ import type { WorkspacePage } from "@/lib/workspaceTypes";
 import { CURRENT_USER, OTHER_USER } from "@/lib/workspaceTypes";
 import { useTimeAgo } from "@/lib/workspaceUtils";
 import { getMindMap } from "@/lib/mindMaps";
+import { markdownToBlocks } from "@/lib/markdownToBlocks";
 import { BlockList } from "./BlockList";
 import { MindMapPicker } from "./MindMapPicker";
 import { cn } from "@/lib/utils";
@@ -33,11 +35,27 @@ export function DocumentEditor({
 }) {
   const updatePageMeta = useWorkspaceStore((s) => s.updatePageMeta);
   const toggleFavorite = useWorkspaceStore((s) => s.toggleFavorite);
+  const updateBlocks = useWorkspaceStore((s) => s.updateBlocks);
   const [cover, setCover] = useState<string | null>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const markdownInputRef = useRef<HTMLInputElement>(null);
   const updatedLabel = useTimeAgo(page.updatedAt);
   const navigate = useNavigate();
   const [mindMapPickerOpen, setMindMapPickerOpen] = useState(false);
+
+  async function handleImportMarkdown(file: File) {
+    try {
+      const text = await file.text();
+      const imported = markdownToBlocks(text);
+      const isOnlyEmptyParagraph =
+        page.blocks.length === 1 && page.blocks[0].type === "paragraph" && !page.blocks[0].content.trim();
+      const nextBlocks = isOnlyEmptyParagraph ? imported : [...page.blocks, ...imported];
+      updateBlocks(page.id, nextBlocks);
+      toast.success(`${imported.length} bloco(s) importado(s) de ${file.name}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao importar Markdown.");
+    }
+  }
 
   const linkedBoardQuery = useQuery({
     queryKey: ["mind-map", page.linkedBoardId],
@@ -111,6 +129,27 @@ export function DocumentEditor({
               </Button>
             </>
           )}
+
+          <input
+            ref={markdownInputRef}
+            type="file"
+            accept=".md,.markdown,text/markdown"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImportMarkdown(file);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-muted-foreground"
+            onClick={() => markdownInputRef.current?.click()}
+          >
+            <FileDown className="h-3.5 w-3.5" />
+            Importar Markdown
+          </Button>
         </div>
 
         <div className="flex items-center gap-1 shrink-0">

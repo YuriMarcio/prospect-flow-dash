@@ -35,7 +35,16 @@ export interface Block {
   imageUrl?: string;
   imageSize?: "small" | "medium" | "full";
   caption?: string;
-  fileMeta?: { name: string; sizeLabel: string };
+  fileMeta?: {
+    name: string;
+    sizeLabel: string;
+    /** URL de download/visualização — do Storage (upload) ou webViewLink (Drive). */
+    url?: string;
+    mimeType?: string;
+    source?: "upload" | "gdrive";
+    /** Ícone do tipo de arquivo devolvido pelo Google Drive Picker. */
+    iconUrl?: string;
+  };
   table?: TableData;
   /** Usado pelo bloco "page" — id da subpágina criada e vinculada a esse bloco. */
   pageRefId?: string;

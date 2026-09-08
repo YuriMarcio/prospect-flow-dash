@@ -1,6 +1,8 @@
 import { request } from "@/lib/api";
 import type { Block, WorkspacePage } from "@/lib/workspaceTypes";
 
+const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:3333").replace(/\/$/, "");
+
 interface WorkspacePageRow {
   id: string;
   parent_id: string | null;
@@ -103,4 +105,27 @@ export async function reorderWorkspaceSiblings(orderedIds: string[]): Promise<vo
 
 export async function deleteWorkspacePage(id: string): Promise<void> {
   await request(`/workspace/pages/${id}`, { method: "DELETE" });
+}
+
+export async function uploadWorkspaceFile(
+  file: File,
+): Promise<{ url: string; name: string; mimeType: string; sizeBytes: number }> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  // Não usa request() aqui de propósito: FormData precisa que o browser
+  // gere o Content-Type com boundary sozinho, e request() sempre força
+  // application/json quando tem body.
+  const response = await fetch(`${API_URL}/workspace/files/upload`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error ?? `Falha no upload (${response.status})`);
+  }
+
+  return response.json();
 }

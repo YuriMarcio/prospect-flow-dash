@@ -9,6 +9,11 @@ function validateGraph(nodes: MindMapNodeInput[], edges: MindMapEdgeInput[]) {
       throw new Error("Uma conexão aponta pra um nó que não existe mais.");
     }
   }
+  for (const node of nodes) {
+    if (node.parent_id && !ids.has(node.parent_id)) {
+      throw new Error("Um nó aponta pra um frame que não existe mais.");
+    }
+  }
 }
 
 export async function listBoardsService() {
