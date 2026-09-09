@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   DndContext,
@@ -72,6 +72,8 @@ export function ObjectivesPage() {
   const [pagePickerOpen, setPagePickerOpen] = useState(false);
   const [sprintFilter, setSprintFilter] = useState<string>("all");
   const [mobileColumnId, setMobileColumnId] = useState<string | null>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const focusTitleOnOpen = useRef(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -131,11 +133,23 @@ export function ObjectivesPage() {
     mutationFn: (columnId: string) => createObjective({ columnId, title: "Novo objetivo" }),
     onSuccess: (objective) => {
       queryClient.setQueryData<Objective[]>(["objectives"], (current) => [...(current ?? []), objective]);
+      focusTitleOnOpen.current = true;
       setSelected(objective);
       setDraft(objective);
     },
     onError: (error: Error) => toast.error(error.message),
   });
+
+  useEffect(() => {
+    if (!selected || !focusTitleOnOpen.current) return;
+    focusTitleOnOpen.current = false;
+    // Pequeno atraso pra vencer o auto-foco do próprio Dialog (Radix foca o
+    // primeiro elemento focável ao abrir) — sem isso o texto às vezes fica
+    // só com foco mas sem selecionar, e o usuário precisa apagar o
+    // placeholder "Novo objetivo" na mão antes de digitar o título de verdade.
+    const t = setTimeout(() => titleInputRef.current?.select(), 50);
+    return () => clearTimeout(t);
+  }, [selected]);
 
   const updateObjectiveMutation = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<Objective> }) => updateObjective(id, patch),
@@ -326,7 +340,11 @@ export function ObjectivesPage() {
           <div className="space-y-3">
             <div className="space-y-1">
               <Label className="text-xs">Título</Label>
-              <Input value={draft.title ?? ""} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} />
+              <Input
+                ref={titleInputRef}
+                value={draft.title ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+              />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Descrição</Label>

@@ -172,10 +172,6 @@ export function FileBlock({
         </DropdownMenu>
       </div>
       {isPdf && embeddableUrl && (
-        <iframe src={embeddableUrl} title={fileMeta.name} className="w-full h-125 rounded-lg border border-border" />
-      )}
-
-      {isPdf && embeddableUrl && (
         <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
           <DialogContent className="flex h-[90vh] w-[90vw] max-w-5xl flex-col">
             <DialogHeader>
