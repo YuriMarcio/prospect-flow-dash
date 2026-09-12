@@ -1,5 +1,6 @@
 import * as workspaceRepository from "./workspace.repository";
 import type { WorkspacePageRow } from "./workspace.repository";
+import { reindexPage } from "./workspace-rag.service";
 
 async function siblingCount(parentId: string | null): Promise<number> {
   const all = await workspaceRepository.findAll();
@@ -43,11 +44,16 @@ export async function updateMetaService(
   patch: { icon?: string; title?: string; description?: string; linkedBoardId?: string | null },
   updatedBy: string,
 ) {
-  return workspaceRepository.updateMeta(id, patch, updatedBy);
+  const result = await workspaceRepository.updateMeta(id, patch, updatedBy);
+  // Fire-and-forget: reindexar não pode atrasar a resposta de salvar a página.
+  if (patch.title !== undefined) void reindexPage(result.id, result.title, result.blocks);
+  return result;
 }
 
 export async function updateBlocksService(id: string, blocks: Record<string, unknown>[], updatedBy: string) {
-  return workspaceRepository.updateBlocks(id, blocks, updatedBy);
+  const result = await workspaceRepository.updateBlocks(id, blocks, updatedBy);
+  void reindexPage(result.id, result.title, result.blocks);
+  return result;
 }
 
 export async function setFavoriteService(id: string, favorite: boolean) {

@@ -16,13 +16,23 @@ const TASK_SCHEMA = {
 const OBJECTIVE_SCHEMA = {
   type: "object",
   properties: {
+    kind: {
+      type: "string",
+      enum: ["objective", "task"],
+      description:
+        "'task' quando o usuário só quer um item avulso e simples (sem virar uma meta maior); 'objective' quando é algo mais amplo, com ou sem sub-tarefas.",
+    },
     title: { type: "string" },
     description: { type: "string" },
     dueDate: { type: ["string", "null"], description: "Data ISO yyyy-mm-dd, ou null se não foi dito." },
     owner: { type: ["string", "null"], description: "Nome do responsável, como foi falado." },
-    tasks: { type: "array", items: TASK_SCHEMA },
+    tasks: {
+      type: "array",
+      items: TASK_SCHEMA,
+      description: "Sub-tarefas aninhadas DENTRO desse item. Pode ficar vazio — nem todo item precisa de sub-tarefas.",
+    },
   },
-  required: ["title", "description", "dueDate", "owner", "tasks"],
+  required: ["kind", "title", "description", "dueDate", "owner", "tasks"],
   additionalProperties: false,
 };
 
@@ -57,8 +67,10 @@ export function buildPlannerSystemInstruction(teamNames: string[]): string {
   const weekday = new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(today);
 
   return [
-    "Você ajuda o usuário a planejar objetivos de trabalho (também chamados de metas ou milestones) conversando por voz ou texto.",
-    "Cada objetivo pode ter tarefas — passos menores pra chegar lá, cada uma com seus próprios título, descrição, prazo e responsável.",
+    "Você ajuda o usuário a planejar objetivos e tarefas de trabalho conversando por voz ou texto.",
+    "Cada item da lista `objectives` pode ser um 'objective' (uma meta maior) ou um 'task' (algo pontual, simples). Os dois aparecem como card no board igualmente — a diferença é só o rótulo.",
+    "IMPORTANTE: uma 'task' NUNCA precisa estar dentro de um 'objective'. Se o usuário pedir só uma tarefa avulsa ('cria uma tarefa pra mim', 'só isso, sem objetivo'), crie um item com kind='task' DIRETO na lista `objectives` (não dentro do campo `tasks` de outro item) e NUNCA pergunte se ele quer criar um objetivo pra ela — isso já foi perguntado e recusado antes se o usuário disser algo como 'não precisa', 'sem vincular a nada' ou similar.",
+    "Só use o campo `tasks` aninhado quando o próprio usuário descrever algo como um passo de um objetivo maior específico (ex: 'dentro desse objetivo, quebra em duas tarefas: X e Y').",
     `Hoje é ${weekday}, ${todayIso}. Converta datas relativas ("sexta que vem", "daqui 2 semanas", "esse trimestre" = último dia do trimestre civil atual, "esse mês"/"fim do mês" = último dia do mês atual) para o formato ISO yyyy-mm-dd, calculando com cuidado — datas diferentes ("fim do mês" e "esse trimestre") não podem virar a mesma data a menos que realmente coincidam. Se não der pra inferir uma data com confiança, deixe dueDate como null — não invente.`,
     teamNames.length
       ? `Nomes da equipe, pra usar exatamente como estão aqui quando o usuário mencionar um responsável: ${teamNames.join(", ")}.`
@@ -118,6 +130,7 @@ function normalizeTaskDraft(raw: unknown): PlannerTaskDraft {
 function normalizeObjectiveDraft(raw: unknown): PlannerObjectiveDraft {
   const obj = typeof raw === "object" && raw ? (raw as Record<string, unknown>) : {};
   return {
+    kind: obj.kind === "task" ? "task" : "objective",
     title: asString(obj.title),
     description: asString(obj.description),
     dueDate: asNullableString(obj.dueDate),

@@ -24,9 +24,10 @@ async function groupPendingByAssignee(
 
   const byAssignee = new Map<string, ObjectiveRow[]>();
   for (const objective of objectives) {
-    // Tarefas (objectives filhos, kind='task') não têm column_id — os
-    // lembretes automáticos cobrem só objetivos de topo por enquanto.
-    if (objective.kind !== "objective") continue;
+    // Itens aninhados (com parent_objective_id) não têm column_id — os
+    // lembretes automáticos cobrem só itens de topo (objetivos e tarefas
+    // avulsas) por enquanto.
+    if (objective.parent_objective_id) continue;
     if (!objective.assigned_user_id) continue;
     if (!predicate(objective, doneColumnIds)) continue;
     const list = byAssignee.get(objective.assigned_user_id) ?? [];

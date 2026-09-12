@@ -138,13 +138,13 @@ export async function create(input: {
   return data;
 }
 
-/** Objetivos de topo (aparecem no board) — exclui as tarefas-filhas. */
+/** Itens de topo (aparecem no board) — objetivos e tarefas avulsas, exclui só as tarefas aninhadas. */
 export async function findAllTopLevel(): Promise<ObjectiveRow[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("objectives")
     .select("*")
-    .eq("kind", "objective")
+    .is("parent_objective_id", null)
     .order("order", { ascending: true });
   if (error) throw new Error(error.message);
   return data ?? [];

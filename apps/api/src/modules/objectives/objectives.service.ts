@@ -44,18 +44,20 @@ export async function createObjectiveService(input: {
 }) {
   if (!input.title?.trim()) throw new Error("Informe um título para o objetivo.");
   const kind = input.kind ?? "objective";
-  if (kind === "task" && !input.parentObjectiveId) {
-    throw new Error("Uma tarefa precisa estar vinculada a um objetivo pai.");
+  // A hierarquia é sobre aninhamento (tem pai ou não), não sobre "kind" — uma
+  // tarefa pode ser avulsa (sem pai, aparece no board igual um objetivo) ou
+  // aninhada dentro de um objetivo. "kind" é só rótulo/ícone, não estrutura.
+  if (input.parentObjectiveId && input.columnId) {
+    throw new Error("Um item vinculado a um objetivo pai não tem coluna própria.");
   }
-  if (kind === "objective" && !input.columnId) {
-    throw new Error("Informe a coluna do objetivo.");
+  if (!input.parentObjectiveId && !input.columnId) {
+    throw new Error("Informe a coluna do item.");
   }
 
   const all = await objectivesRepository.findAll();
-  const order =
-    kind === "task"
-      ? all.filter((o) => o.parent_objective_id === input.parentObjectiveId).length
-      : all.filter((o) => o.kind === "objective" && o.column_id === input.columnId).length;
+  const order = input.parentObjectiveId
+    ? all.filter((o) => o.parent_objective_id === input.parentObjectiveId).length
+    : all.filter((o) => !o.parent_objective_id && o.column_id === input.columnId).length;
 
   return objectivesRepository.create({ ...input, title: input.title.trim(), order, kind });
 }

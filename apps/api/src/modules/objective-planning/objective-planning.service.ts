@@ -102,7 +102,7 @@ export async function confirmSession(
       dueDate: objectiveDraft.dueDate,
       owner,
       assignedUserId,
-      kind: "objective",
+      kind: objectiveDraft.kind,
     });
     createdIds.push(objective.id);
 

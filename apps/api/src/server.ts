@@ -21,6 +21,7 @@ import { workspaceRoutes } from "./modules/workspace/workspace.routes";
 import { mindMapsRoutes } from "./modules/mind-maps/mind-maps.routes";
 import { objectivesRoutes } from "./modules/objectives/objectives.routes";
 import { objectivePlanningRoutes } from "./modules/objective-planning/objective-planning.routes";
+import { workspacePlanningRoutes } from "./modules/workspace-planning/workspace-planning.routes";
 import { runDispatchTick } from "./workers/prospector/dispatcher.worker";
 import { buildTodayQueueForAllCampaigns } from "./workers/prospector/queue-builder.worker";
 import { runSessionTick } from "./workers/prospector/session.worker";
@@ -130,6 +131,7 @@ async function bootstrap() {
     await app.register(mindMapsRoutes, { prefix: "/mind-maps" });
     await app.register(objectivesRoutes, { prefix: "/objectives" });
     await app.register(objectivePlanningRoutes, { prefix: "/objective-planning" });
+    await app.register(workspacePlanningRoutes, { prefix: "/workspace-planning" });
 
     // 5. Iniciando o servidor
     // O host "0.0.0.0" é importante se for rodar em Docker ou cloud depois

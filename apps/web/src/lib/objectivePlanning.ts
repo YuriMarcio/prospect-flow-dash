@@ -8,6 +8,8 @@ export interface PlannerTaskDraft {
 }
 
 export interface PlannerObjectiveDraft {
+  /** "task" = tarefa avulsa, sem objetivo pai. */
+  kind: "objective" | "task";
   title: string;
   description: string;
   dueDate: string | null;
