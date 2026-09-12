@@ -71,13 +71,31 @@ export async function listObjectivesController(_request: FastifyRequest, reply: 
 
 export async function createObjectiveController(
   request: FastifyRequest<{
-    Body: { columnId: string; title: string; description?: string; dueDate?: string | null; owner?: string | null };
+    Body: {
+      columnId?: string | null;
+      title: string;
+      description?: string;
+      dueDate?: string | null;
+      owner?: string | null;
+      kind?: "objective" | "task";
+      parentObjectiveId?: string | null;
+      assignedUserId?: string | null;
+    };
   }>,
   reply: FastifyReply,
 ) {
   try {
-    const { columnId, title, description, dueDate, owner } = request.body;
-    const result = await createObjectiveService({ columnId, title, description, dueDate, owner });
+    const { columnId, title, description, dueDate, owner, kind, parentObjectiveId, assignedUserId } = request.body;
+    const result = await createObjectiveService({
+      columnId,
+      title,
+      description,
+      dueDate,
+      owner,
+      kind,
+      parentObjectiveId,
+      assignedUserId,
+    });
     return reply.status(201).send(result);
   } catch (error: unknown) {
     return reply.status(400).send({ error: error instanceof Error ? error.message : String(error) });
@@ -85,7 +103,7 @@ export async function createObjectiveController(
 }
 
 interface UpdateObjectiveBody {
-  columnId?: string;
+  columnId?: string | null;
   order?: number;
   title?: string;
   description?: string;
@@ -96,6 +114,7 @@ interface UpdateObjectiveBody {
   linkedPageId?: string | null;
   sprintId?: string | null;
   assignedUserId?: string | null;
+  parentObjectiveId?: string | null;
 }
 
 export async function updateObjectiveController(
@@ -115,6 +134,7 @@ export async function updateObjectiveController(
   if (body.linkedPageId !== undefined) patch.linked_page_id = body.linkedPageId;
   if (body.sprintId !== undefined) patch.sprint_id = body.sprintId;
   if (body.assignedUserId !== undefined) patch.assigned_user_id = body.assignedUserId;
+  if (body.parentObjectiveId !== undefined) patch.parent_objective_id = body.parentObjectiveId;
 
   const result = await updateObjectiveService(request.params.id, patch);
   return reply.send(result);

@@ -19,6 +19,7 @@ import { Route as KanbanRouteImport } from './routes/kanban'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as CapturasRouteImport } from './routes/capturas'
 import { Route as AutomacaoRouteImport } from './routes/automacao'
+import { Route as AssistenteIaRouteImport } from './routes/assistente-ia'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
@@ -75,6 +76,11 @@ const AutomacaoRoute = AutomacaoRouteImport.update({
   path: '/automacao',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AssistenteIaRoute = AssistenteIaRouteImport.update({
+  id: '/assistente-ia',
+  path: '/assistente-ia',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AnalyticsRoute = AnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/analytics': typeof AnalyticsRoute
+  '/assistente-ia': typeof AssistenteIaRoute
   '/automacao': typeof AutomacaoRoute
   '/capturas': typeof CapturasRoute
   '/configuracoes': typeof ConfiguracoesRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/analytics': typeof AnalyticsRoute
+  '/assistente-ia': typeof AssistenteIaRoute
   '/automacao': typeof AutomacaoRoute
   '/capturas': typeof CapturasRoute
   '/configuracoes': typeof ConfiguracoesRoute
@@ -139,6 +147,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/agenda': typeof AgendaRoute
   '/analytics': typeof AnalyticsRoute
+  '/assistente-ia': typeof AssistenteIaRoute
   '/automacao': typeof AutomacaoRoute
   '/capturas': typeof CapturasRoute
   '/configuracoes': typeof ConfiguracoesRoute
@@ -158,6 +167,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/analytics'
+    | '/assistente-ia'
     | '/automacao'
     | '/capturas'
     | '/configuracoes'
@@ -175,6 +185,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/analytics'
+    | '/assistente-ia'
     | '/automacao'
     | '/capturas'
     | '/configuracoes'
@@ -191,6 +202,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agenda'
     | '/analytics'
+    | '/assistente-ia'
     | '/automacao'
     | '/capturas'
     | '/configuracoes'
@@ -209,6 +221,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgendaRoute: typeof AgendaRoute
   AnalyticsRoute: typeof AnalyticsRoute
+  AssistenteIaRoute: typeof AssistenteIaRoute
   AutomacaoRoute: typeof AutomacaoRoute
   CapturasRoute: typeof CapturasRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
@@ -293,6 +306,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AutomacaoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/assistente-ia': {
+      id: '/assistente-ia'
+      path: '/assistente-ia'
+      fullPath: '/assistente-ia'
+      preLoaderRoute: typeof AssistenteIaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/analytics': {
       id: '/analytics'
       path: '/analytics'
@@ -349,6 +369,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgendaRoute: AgendaRoute,
   AnalyticsRoute: AnalyticsRoute,
+  AssistenteIaRoute: AssistenteIaRoute,
   AutomacaoRoute: AutomacaoRoute,
   CapturasRoute: CapturasRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,

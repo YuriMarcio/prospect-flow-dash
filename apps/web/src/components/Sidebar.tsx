@@ -15,6 +15,7 @@ const items = [
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/workspace", label: "Workspace", icon: NotebookText },
   { to: "/mapas-mentais", label: "Mapas Mentais", icon: Network },
+  { to: "/assistente-ia", label: "Assistente IA", icon: Sparkles, isNew: true },
   { to: "/objetivos", label: "Objetivos", icon: Target },
   { to: "/senhas", label: "Senhas", icon: Lock },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
@@ -51,6 +52,7 @@ export function Sidebar() {
             >
               <it.icon className={cn("h-4 w-4 transition-colors", active && "text-primary")} />
               {it.label}
+              {"isNew" in it && it.isNew && !active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-destructive" />}
               {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />}
             </Link>
           );

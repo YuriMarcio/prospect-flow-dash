@@ -10,7 +10,7 @@ export interface ObjectiveColumn {
 
 export interface Objective {
   id: string;
-  columnId: string;
+  columnId: string | null;
   title: string;
   description: string;
   status: string;
@@ -21,6 +21,9 @@ export interface Objective {
   linkedPageId: string | null;
   sprintId: string | null;
   assignedUserId: string | null;
+  /** "task" = tarefa filha (mini-card criado pelo planejador por IA), não aparece no board. */
+  kind: "objective" | "task";
+  parentObjectiveId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,7 +51,7 @@ interface ObjectiveColumnRow {
 
 interface ObjectiveRow {
   id: string;
-  column_id: string;
+  column_id: string | null;
   title: string;
   description: string;
   status: string;
@@ -59,6 +62,8 @@ interface ObjectiveRow {
   linked_page_id: string | null;
   sprint_id: string | null;
   assigned_user_id: string | null;
+  kind: "objective" | "task";
+  parent_objective_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -88,6 +93,8 @@ function fromRow(row: ObjectiveRow): Objective {
     linkedPageId: row.linked_page_id,
     sprintId: row.sprint_id,
     assignedUserId: row.assigned_user_id,
+    kind: row.kind,
+    parentObjectiveId: row.parent_objective_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -144,7 +151,7 @@ export async function createObjective(input: {
 export async function updateObjective(
   id: string,
   patch: Partial<{
-    columnId: string;
+    columnId: string | null;
     order: number;
     title: string;
     description: string;

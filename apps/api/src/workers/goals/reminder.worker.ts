@@ -24,6 +24,9 @@ async function groupPendingByAssignee(
 
   const byAssignee = new Map<string, ObjectiveRow[]>();
   for (const objective of objectives) {
+    // Tarefas (objectives filhos, kind='task') não têm column_id — os
+    // lembretes automáticos cobrem só objetivos de topo por enquanto.
+    if (objective.kind !== "objective") continue;
     if (!objective.assigned_user_id) continue;
     if (!predicate(objective, doneColumnIds)) continue;
     const list = byAssignee.get(objective.assigned_user_id) ?? [];
@@ -55,7 +58,7 @@ async function sendToAssignee(userId: string, message: string): Promise<void> {
 export async function runMorningReminder(): Promise<void> {
   const today = todayIso();
   const byAssignee = await groupPendingByAssignee(
-    (objective, doneColumnIds) => objective.due_date === today && !doneColumnIds.has(objective.column_id),
+    (objective, doneColumnIds) => objective.due_date === today && !doneColumnIds.has(objective.column_id ?? ""),
   );
 
   for (const [userId, objectives] of byAssignee) {
@@ -72,7 +75,7 @@ export async function runEveningReminder(): Promise<void> {
   const today = todayIso();
   const byAssignee = await groupPendingByAssignee(
     (objective, doneColumnIds) =>
-      Boolean(objective.due_date) && objective.due_date! <= today && !doneColumnIds.has(objective.column_id),
+      Boolean(objective.due_date) && objective.due_date! <= today && !doneColumnIds.has(objective.column_id ?? ""),
   );
 
   for (const [userId, objectives] of byAssignee) {

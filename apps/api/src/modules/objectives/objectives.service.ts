@@ -33,16 +33,31 @@ export async function listObjectivesService() {
 }
 
 export async function createObjectiveService(input: {
-  columnId: string;
+  columnId?: string | null;
   title: string;
   description?: string;
   dueDate?: string | null;
   owner?: string | null;
+  kind?: "objective" | "task";
+  parentObjectiveId?: string | null;
+  assignedUserId?: string | null;
 }) {
   if (!input.title?.trim()) throw new Error("Informe um título para o objetivo.");
+  const kind = input.kind ?? "objective";
+  if (kind === "task" && !input.parentObjectiveId) {
+    throw new Error("Uma tarefa precisa estar vinculada a um objetivo pai.");
+  }
+  if (kind === "objective" && !input.columnId) {
+    throw new Error("Informe a coluna do objetivo.");
+  }
+
   const all = await objectivesRepository.findAll();
-  const order = all.filter((o) => o.column_id === input.columnId).length;
-  return objectivesRepository.create({ ...input, title: input.title.trim(), order });
+  const order =
+    kind === "task"
+      ? all.filter((o) => o.parent_objective_id === input.parentObjectiveId).length
+      : all.filter((o) => o.kind === "objective" && o.column_id === input.columnId).length;
+
+  return objectivesRepository.create({ ...input, title: input.title.trim(), order, kind });
 }
 
 export async function updateObjectiveService(id: string, patch: Record<string, unknown>) {

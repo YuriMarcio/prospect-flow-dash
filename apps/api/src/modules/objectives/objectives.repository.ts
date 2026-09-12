@@ -11,7 +11,7 @@ export interface ObjectiveColumnRow {
 
 export interface ObjectiveRow {
   id: string;
-  column_id: string;
+  column_id: string | null;
   title: string;
   description: string;
   status: string;
@@ -22,6 +22,8 @@ export interface ObjectiveRow {
   linked_page_id: string | null;
   sprint_id: string | null;
   assigned_user_id: string | null;
+  kind: "objective" | "task";
+  parent_objective_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -104,30 +106,60 @@ export async function findAll(): Promise<ObjectiveRow[]> {
 }
 
 export async function create(input: {
-  columnId: string;
+  columnId?: string | null;
   title: string;
   description?: string;
   dueDate?: string | null;
   owner?: string | null;
   order: number;
+  kind?: "objective" | "task";
+  parentObjectiveId?: string | null;
+  assignedUserId?: string | null;
 }): Promise<ObjectiveRow> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("objectives")
     .insert([
       {
-        column_id: input.columnId,
+        column_id: input.columnId ?? null,
         title: input.title,
         description: input.description ?? "",
         due_date: input.dueDate ?? null,
         owner: input.owner ?? null,
         order: input.order,
+        kind: input.kind ?? "objective",
+        parent_objective_id: input.parentObjectiveId ?? null,
+        assigned_user_id: input.assignedUserId ?? null,
       },
     ])
     .select()
     .single();
   if (error) throw new Error(error.message);
   return data;
+}
+
+/** Objetivos de topo (aparecem no board) — exclui as tarefas-filhas. */
+export async function findAllTopLevel(): Promise<ObjectiveRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("objectives")
+    .select("*")
+    .eq("kind", "objective")
+    .order("order", { ascending: true });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+/** Tarefas de um objetivo específico, na ordem em que foram criadas. */
+export async function findChildren(parentObjectiveId: string): Promise<ObjectiveRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("objectives")
+    .select("*")
+    .eq("parent_objective_id", parentObjectiveId)
+    .order("order", { ascending: true });
+  if (error) throw new Error(error.message);
+  return data ?? [];
 }
 
 export async function update(id: string, patch: Record<string, unknown>): Promise<ObjectiveRow> {
