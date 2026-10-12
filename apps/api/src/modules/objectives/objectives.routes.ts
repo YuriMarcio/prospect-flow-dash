@@ -11,6 +11,7 @@ import {
   deleteObjectiveController,
   listSprintsController,
   createSprintController,
+  updateSprintController,
   deleteSprintController,
 } from "./objectives.controller";
 
@@ -23,6 +24,7 @@ export async function objectivesRoutes(app: FastifyInstance) {
 
   app.get("/sprints", listSprintsController);
   app.post("/sprints", createSprintController);
+  app.patch("/sprints/:id", updateSprintController);
   app.delete("/sprints/:id", deleteSprintController);
 
   app.get("/", listObjectivesController);

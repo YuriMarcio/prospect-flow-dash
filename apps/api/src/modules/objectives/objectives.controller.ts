@@ -11,6 +11,7 @@ import {
   deleteObjectiveService,
   listSprintsService,
   createSprintService,
+  updateSprintService,
   deleteSprintService,
 } from "./objectives.service";
 
@@ -80,12 +81,27 @@ export async function createObjectiveController(
       kind?: "objective" | "task";
       parentObjectiveId?: string | null;
       assignedUserId?: string | null;
+      sprintId?: string | null;
+      area?: string | null;
+      priority?: string | null;
     };
   }>,
   reply: FastifyReply,
 ) {
   try {
-    const { columnId, title, description, dueDate, owner, kind, parentObjectiveId, assignedUserId } = request.body;
+    const {
+      columnId,
+      title,
+      description,
+      dueDate,
+      owner,
+      kind,
+      parentObjectiveId,
+      assignedUserId,
+      sprintId,
+      area,
+      priority,
+    } = request.body;
     const result = await createObjectiveService({
       columnId,
       title,
@@ -95,6 +111,9 @@ export async function createObjectiveController(
       kind,
       parentObjectiveId,
       assignedUserId,
+      sprintId,
+      area,
+      priority,
     });
     return reply.status(201).send(result);
   } catch (error: unknown) {
@@ -115,6 +134,8 @@ interface UpdateObjectiveBody {
   sprintId?: string | null;
   assignedUserId?: string | null;
   parentObjectiveId?: string | null;
+  area?: string | null;
+  priority?: string | null;
 }
 
 export async function updateObjectiveController(
@@ -135,9 +156,15 @@ export async function updateObjectiveController(
   if (body.sprintId !== undefined) patch.sprint_id = body.sprintId;
   if (body.assignedUserId !== undefined) patch.assigned_user_id = body.assignedUserId;
   if (body.parentObjectiveId !== undefined) patch.parent_objective_id = body.parentObjectiveId;
+  if (body.area !== undefined) patch.area = body.area;
+  if (body.priority !== undefined) patch.priority = body.priority;
 
-  const result = await updateObjectiveService(request.params.id, patch);
-  return reply.send(result);
+  try {
+    const result = await updateObjectiveService(request.params.id, patch);
+    return reply.send(result);
+  } catch (error: unknown) {
+    return reply.status(400).send({ error: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 export async function deleteObjectiveController(
@@ -159,6 +186,17 @@ export async function createSprintController(
   try {
     const result = await createSprintService(request.body);
     return reply.status(201).send(result);
+  } catch (error: unknown) {
+    return reply.status(400).send({ error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+export async function updateSprintController(
+  request: FastifyRequest<{ Params: { id: string }; Body: { name: string; startDate: string; endDate: string } }>,
+  reply: FastifyReply,
+) {
+  try {
+    return reply.send(await updateSprintService(request.params.id, request.body));
   } catch (error: unknown) {
     return reply.status(400).send({ error: error instanceof Error ? error.message : String(error) });
   }

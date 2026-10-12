@@ -1,6 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { CheckCircle2, MoreHorizontal } from "lucide-react";
-import type { Objective, ObjectiveColumn as ObjectiveColumnT, SubIssueStats } from "@/lib/objectives";
+import type { Objective, ObjectiveColumn as ObjectiveColumnT } from "@/lib/objectives";
+import type { MilestoneStats } from "@/lib/objectiveTree";
 import { ObjectiveCard } from "./ObjectiveCard";
 import {
   DropdownMenu,
@@ -18,7 +19,7 @@ export function ObjectiveColumn({
   onOpenObjective,
   assigneeNameById,
   sprintNameById,
-  subIssueStatsById,
+  milestoneStatsById,
 }: {
   column: ObjectiveColumnT;
   objectives: Objective[];
@@ -28,7 +29,7 @@ export function ObjectiveColumn({
   onOpenObjective: (objective: Objective) => void;
   assigneeNameById: Record<string, string>;
   sprintNameById: Record<string, string>;
-  subIssueStatsById: Record<string, SubIssueStats>;
+  milestoneStatsById: Record<string, MilestoneStats>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
@@ -81,7 +82,7 @@ export function ObjectiveColumn({
             onOpen={onOpenObjective}
             assigneeName={objective.assignedUserId ? assigneeNameById[objective.assignedUserId] : null}
             sprintName={objective.sprintId ? sprintNameById[objective.sprintId] : null}
-            subIssueStats={subIssueStatsById[objective.id]}
+            milestoneStats={milestoneStatsById[objective.id]}
           />
         ))}
 

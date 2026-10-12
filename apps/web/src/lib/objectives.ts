@@ -8,6 +8,9 @@ export interface ObjectiveColumn {
   isDone: boolean;
 }
 
+export type ObjectiveArea = "vendas" | "marketing" | "administrativo" | "desenvolvimento";
+export type ObjectivePriority = "critica" | "alta" | "media" | "baixa";
+
 export interface Objective {
   id: string;
   columnId: string | null;
@@ -21,9 +24,14 @@ export interface Objective {
   linkedPageId: string | null;
   sprintId: string | null;
   assignedUserId: string | null;
-  /** "task" = sub-issue (tarefa filha, criada na mão ou pelo planejador por IA); com `parentObjectiveId` não aparece no board. */
+  /** "task" = item filho (marco, issue ou subissue) ou tarefa avulsa; com `parentObjectiveId` não aparece no board. */
   kind: "objective" | "task";
+  /** Hierarquia: objetivo → marco → issue → subissue, todos ligados por este campo. */
   parentObjectiveId: string | null;
+  area: ObjectiveArea | null;
+  priority: ObjectivePriority | null;
+  /** Número sequencial dos itens de topo ("OBJ-003"). */
+  codeNumber: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -64,6 +72,9 @@ interface ObjectiveRow {
   assigned_user_id: string | null;
   kind: "objective" | "task";
   parent_objective_id: string | null;
+  area: ObjectiveArea | null;
+  priority: ObjectivePriority | null;
+  code_number: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -73,27 +84,6 @@ interface SprintRow {
   name: string;
   start_date: string;
   end_date: string;
-}
-
-export interface SubIssueStats {
-  done: number;
-  total: number;
-}
-
-export function isSubIssueDone(subIssue: Objective): boolean {
-  return subIssue.progress >= 100;
-}
-
-/** Contagem de sub-issues (concluídas / total) por objetivo pai. */
-export function buildSubIssueStats(objectives: Objective[]): Record<string, SubIssueStats> {
-  const stats: Record<string, SubIssueStats> = {};
-  for (const objective of objectives) {
-    if (!objective.parentObjectiveId) continue;
-    const entry = (stats[objective.parentObjectiveId] ??= { done: 0, total: 0 });
-    entry.total += 1;
-    if (isSubIssueDone(objective)) entry.done += 1;
-  }
-  return stats;
 }
 
 function fromColumnRow(row: ObjectiveColumnRow): ObjectiveColumn {
@@ -116,6 +106,9 @@ function fromRow(row: ObjectiveRow): Objective {
     assignedUserId: row.assigned_user_id,
     kind: row.kind,
     parentObjectiveId: row.parent_objective_id,
+    area: row.area,
+    priority: row.priority,
+    codeNumber: row.code_number,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -159,7 +152,7 @@ export async function listObjectives(): Promise<Objective[]> {
 }
 
 export async function createObjective(input: {
-  /** Obrigatório pra itens de topo; sub-issues (com `parentObjectiveId`) não têm coluna. */
+  /** Obrigatório pra itens de topo; filhos (com `parentObjectiveId`) não têm coluna. */
   columnId?: string;
   title: string;
   description?: string;
@@ -167,6 +160,10 @@ export async function createObjective(input: {
   owner?: string | null;
   kind?: "objective" | "task";
   parentObjectiveId?: string;
+  assignedUserId?: string | null;
+  sprintId?: string | null;
+  area?: ObjectiveArea | null;
+  priority?: ObjectivePriority | null;
 }): Promise<Objective> {
   const row = await request<ObjectiveRow>("/objectives", { method: "POST", body: JSON.stringify(input) });
   return fromRow(row);
@@ -186,6 +183,8 @@ export async function updateObjective(
     linkedPageId: string | null;
     sprintId: string | null;
     assignedUserId: string | null;
+    area: ObjectiveArea | null;
+    priority: ObjectivePriority | null;
   }>,
 ): Promise<Objective> {
   const row = await request<ObjectiveRow>(`/objectives/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
@@ -203,6 +202,14 @@ export async function listSprints(): Promise<Sprint[]> {
 
 export async function createSprint(input: { name: string; startDate: string; endDate: string }): Promise<Sprint> {
   const row = await request<SprintRow>("/objectives/sprints", { method: "POST", body: JSON.stringify(input) });
+  return fromSprintRow(row);
+}
+
+export async function updateSprint(
+  id: string,
+  input: { name: string; startDate: string; endDate: string },
+): Promise<Sprint> {
+  const row = await request<SprintRow>(`/objectives/sprints/${id}`, { method: "PATCH", body: JSON.stringify(input) });
   return fromSprintRow(row);
 }
 

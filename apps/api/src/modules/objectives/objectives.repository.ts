@@ -24,6 +24,10 @@ export interface ObjectiveRow {
   assigned_user_id: string | null;
   kind: "objective" | "task";
   parent_objective_id: string | null;
+  area: string | null;
+  priority: string | null;
+  /** Número sequencial só dos itens de topo — vira o código "OBJ-003" na tela. */
+  code_number: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -115,6 +119,10 @@ export async function create(input: {
   kind?: "objective" | "task";
   parentObjectiveId?: string | null;
   assignedUserId?: string | null;
+  sprintId?: string | null;
+  area?: string | null;
+  priority?: string | null;
+  codeNumber?: number | null;
 }): Promise<ObjectiveRow> {
   const supabase = getSupabase();
   const { data, error } = await supabase
@@ -130,6 +138,10 @@ export async function create(input: {
         kind: input.kind ?? "objective",
         parent_objective_id: input.parentObjectiveId ?? null,
         assigned_user_id: input.assignedUserId ?? null,
+        sprint_id: input.sprintId ?? null,
+        area: input.area ?? null,
+        priority: input.priority ?? null,
+        code_number: input.codeNumber ?? null,
       },
     ])
     .select()
@@ -187,9 +199,10 @@ export async function remove(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function removeChildren(parentObjectiveId: string): Promise<void> {
+export async function removeMany(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
   const supabase = getSupabase();
-  const { error } = await supabase.from("objectives").delete().eq("parent_objective_id", parentObjectiveId);
+  const { error } = await supabase.from("objectives").delete().in("id", ids);
   if (error) throw new Error(error.message);
 }
 
@@ -208,6 +221,21 @@ export async function createSprint(input: { name: string; startDate: string; end
   const { data, error } = await supabase
     .from("sprints")
     .insert([{ name: input.name, start_date: input.startDate, end_date: input.endDate }])
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function updateSprint(
+  id: string,
+  input: { name: string; startDate: string; endDate: string },
+): Promise<SprintRow> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("sprints")
+    .update({ name: input.name, start_date: input.startDate, end_date: input.endDate })
+    .eq("id", id)
     .select()
     .single();
   if (error) throw new Error(error.message);

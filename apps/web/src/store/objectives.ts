@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Objective, ObjectiveColumn } from "@/lib/objectives";
+import { collectSubtreeIds } from "@/lib/objectiveTree";
 
 interface ObjectivesState {
   columns: ObjectiveColumn[];
@@ -45,7 +46,10 @@ export const useObjectivesStore = create<ObjectivesState>()((set) => ({
       };
     }),
 
-  // Excluir um objetivo leva as sub-issues junto (o servidor faz o mesmo).
+  // Excluir um item leva marcos, issues e subissues dele junto (o servidor faz o mesmo).
   removeObjective: (id) =>
-    set((s) => ({ objectives: s.objectives.filter((o) => o.id !== id && o.parentObjectiveId !== id) })),
+    set((s) => {
+      const removed = collectSubtreeIds(s.objectives, id);
+      return { objectives: s.objectives.filter((o) => !removed.has(o.id)) };
+    }),
 }));

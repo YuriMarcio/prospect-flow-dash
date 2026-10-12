@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listObjectiveColumns, listObjectives } from "@/lib/objectives";
+import { applyDerivedProgress } from "@/lib/objectiveTree";
 import { useObjectivesStore } from "@/store/objectives";
 
 export function useObjectivesSync() {
@@ -24,7 +25,9 @@ export function useObjectivesSync() {
   }, [columnsQuery.data, setColumns]);
 
   useEffect(() => {
-    if (objectivesQuery.data) setObjectives(objectivesQuery.data);
+    // Progresso derivado da árvore aplicado já na entrada: marcar/desmarcar um item
+    // atualiza o percentual dos ancestrais na hora, sem esperar o servidor recalcular.
+    if (objectivesQuery.data) setObjectives(applyDerivedProgress(objectivesQuery.data));
   }, [objectivesQuery.data, setObjectives]);
 
   return { columnsQuery, objectivesQuery };

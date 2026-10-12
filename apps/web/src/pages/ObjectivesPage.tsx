@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   DndContext,
@@ -11,27 +11,11 @@ import {
   closestCorners,
 } from "@dnd-kit/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, Plus, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useObjectivesStore } from "@/store/objectives";
 import { useObjectivesSync } from "@/hooks/use-objectives-sync";
@@ -39,10 +23,12 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { ObjectiveColumn } from "@/components/objectives/ObjectiveColumn";
 import { ObjectiveCard } from "@/components/objectives/ObjectiveCard";
+import { ObjectiveDrawer } from "@/components/objectives/ObjectiveDrawer";
+import { ObjectiveFormDialog, type ObjectiveFormValues } from "@/components/objectives/ObjectiveFormDialog";
+import { ObjectiveStats } from "@/components/objectives/ObjectiveStats";
+import { SprintDialog, type SprintFormValues } from "@/components/objectives/SprintDialog";
 import { WorkspacePagePicker } from "@/components/objectives/WorkspacePagePicker";
-import { SubIssueList } from "@/components/objectives/SubIssueList";
 import {
-  buildSubIssueStats,
   createObjective,
   createObjectiveColumn,
   createSprint,
@@ -52,8 +38,21 @@ import {
   listTeamUsers,
   updateObjective,
   updateObjectiveColumn,
+  updateSprint,
   type Objective,
+  type ObjectiveArea,
+  type Sprint,
 } from "@/lib/objectives";
+import { OBJECTIVE_AREAS, sprintLabel } from "@/lib/objectiveMeta";
+import {
+  averageProgress,
+  buildChildrenMap,
+  buildMilestoneStats,
+  collectSubtreeIds,
+  isDone,
+} from "@/lib/objectiveTree";
+
+type FormState = { mode: "create"; columnId: string } | { mode: "edit" } | null;
 
 export function ObjectivesPage() {
   useObjectivesSync();
@@ -69,13 +68,17 @@ export function ObjectivesPage() {
   const workspacePages = useWorkspaceStore((s) => s.pages);
 
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Objective | null>(null);
-  const [draft, setDraft] = useState<Partial<Objective>>({});
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [formState, setFormState] = useState<FormState>(null);
+  const [sprintDialog, setSprintDialog] = useState<{ open: boolean; sprint: Sprint | null }>({
+    open: false,
+    sprint: null,
+  });
   const [pagePickerOpen, setPagePickerOpen] = useState(false);
   const [sprintFilter, setSprintFilter] = useState<string>("all");
+  const [areaFilter, setAreaFilter] = useState<"all" | ObjectiveArea>("all");
+  const [search, setSearch] = useState("");
   const [mobileColumnId, setMobileColumnId] = useState<string | null>(null);
-  const titleInputRef = useRef<HTMLInputElement>(null);
-  const focusTitleOnOpen = useRef(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -84,16 +87,23 @@ export function ObjectivesPage() {
   const teamQuery = useQuery({ queryKey: ["team-users"], queryFn: listTeamUsers });
   const teamUsers = teamQuery.data ?? [];
 
-  const createSprintMutation = useMutation({
-    mutationFn: (name: string) => {
-      const start = new Date();
-      const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
-      const toIso = (d: Date) => d.toISOString().slice(0, 10);
-      return createSprint({ name, startDate: toIso(start), endDate: toIso(end) });
-    },
-    onSuccess: (sprint) => {
-      queryClient.setQueryData<typeof sprints>(["sprints"], (current) => [...(current ?? []), sprint]);
-      setSprintFilter(sprint.id);
+  // O cache de ["objectives"] é a fonte: a store é espelho dele (useObjectivesSync). Escrever nele e
+  // depois revalidar mantém a tela instantânea e deixa o servidor recalcular o progresso da árvore.
+  function patchObjectivesCache(update: (current: Objective[]) => Objective[]) {
+    queryClient.setQueryData<Objective[]>(["objectives"], (current) => (current ? update(current) : current));
+  }
+  const revalidateObjectives = () => queryClient.invalidateQueries({ queryKey: ["objectives"] });
+
+  const saveSprintMutation = useMutation({
+    mutationFn: ({ id, values }: { id: string | null; values: SprintFormValues }) =>
+      id ? updateSprint(id, values) : createSprint(values),
+    onSuccess: (sprint, { id }) => {
+      queryClient.setQueryData<Sprint[]>(["sprints"], (current) =>
+        id ? (current ?? []).map((s) => (s.id === sprint.id ? sprint : s)) : [...(current ?? []), sprint],
+      );
+      queryClient.invalidateQueries({ queryKey: ["sprints"] });
+      if (!id) setSprintFilter(sprint.id);
+      setSprintDialog({ open: false, sprint: null });
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -101,7 +111,12 @@ export function ObjectivesPage() {
   const moveMutation = useMutation({
     mutationFn: ({ id, columnId, order }: { id: string; columnId: string; order: number }) =>
       updateObjective(id, { columnId, order }),
-    onError: (error: Error) => toast.error(error.message),
+    onMutate: ({ id, columnId, order }) =>
+      patchObjectivesCache((current) => current.map((o) => (o.id === id ? { ...o, columnId, order } : o))),
+    onError: (error: Error) => {
+      toast.error(error.message);
+      revalidateObjectives();
+    },
   });
 
   const createColumnMutation = useMutation({
@@ -120,7 +135,7 @@ export function ObjectivesPage() {
     mutationFn: (id: string) => deleteObjectiveColumn(id),
     onSuccess: (_void, id) => {
       removeColumn(id);
-      queryClient.invalidateQueries({ queryKey: ["objectives"] });
+      revalidateObjectives();
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -132,32 +147,49 @@ export function ObjectivesPage() {
   });
 
   const createObjectiveMutation = useMutation({
-    mutationFn: (columnId: string) => createObjective({ columnId, title: "Novo objetivo" }),
+    mutationFn: (values: ObjectiveFormValues) =>
+      createObjective({
+        columnId: values.columnId,
+        title: values.title,
+        description: values.description,
+        area: values.area,
+        priority: values.priority,
+        dueDate: values.dueDate,
+        assignedUserId: values.assignedUserId,
+        sprintId: values.sprintId,
+      }),
     onSuccess: (objective) => {
-      queryClient.setQueryData<Objective[]>(["objectives"], (current) => [...(current ?? []), objective]);
-      focusTitleOnOpen.current = true;
-      setSelected(objective);
-      setDraft(objective);
+      patchObjectivesCache((current) => [...current, objective]);
+      setFormState(null);
+      // Abre o detalhe já pra quebrar o objetivo em marcos.
+      setDetailId(objective.id);
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
-  useEffect(() => {
-    if (!selected || !focusTitleOnOpen.current) return;
-    focusTitleOnOpen.current = false;
-    // Pequeno atraso pra vencer o auto-foco do próprio Dialog (Radix foca o
-    // primeiro elemento focável ao abrir) — sem isso o texto às vezes fica
-    // só com foco mas sem selecionar, e o usuário precisa apagar o
-    // placeholder "Novo objetivo" na mão antes de digitar o título de verdade.
-    const t = setTimeout(() => titleInputRef.current?.select(), 50);
-    return () => clearTimeout(t);
-  }, [selected]);
-
   const updateObjectiveMutation = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<Objective> }) => updateObjective(id, patch),
-    onSuccess: () => {
-      setSelected(null);
-      queryClient.invalidateQueries({ queryKey: ["objectives"] });
+    mutationFn: ({ objective, values }: { objective: Objective; values: ObjectiveFormValues }) => {
+      const patch: Parameters<typeof updateObjective>[1] = {
+        title: values.title,
+        description: values.description,
+        area: values.area,
+        priority: values.priority,
+        dueDate: values.dueDate,
+        assignedUserId: values.assignedUserId,
+        sprintId: values.sprintId,
+      };
+      if (values.columnId !== objective.columnId) {
+        patch.columnId = values.columnId;
+        patch.order = objectives.filter((o) => o.columnId === values.columnId && o.id !== objective.id).length;
+      }
+      // Com marcos o progresso é derivado deles — só vale o slider sem marcos.
+      if (!childrenMap.has(objective.id)) patch.progress = values.progress;
+      return updateObjective(objective.id, patch);
+    },
+    onSuccess: (updated) => {
+      patchObjectivesCache((current) => current.map((o) => (o.id === updated.id ? updated : o)));
+      setFormState(null);
+      revalidateObjectives();
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -166,43 +198,13 @@ export function ObjectivesPage() {
     mutationFn: (id: string) => deleteObjective(id),
     onSuccess: (_void, id) => {
       removeObjective(id);
-      setSelected(null);
-      // Mantém o cache em dia: sem isso, uma escrita posterior no cache ressuscitaria o item (e as sub-issues) na store.
-      queryClient.invalidateQueries({ queryKey: ["objectives"] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  // Sub-issues escrevem direto no cache de ["objectives"] (a store é espelho dele via useObjectivesSync)
-  // e depois revalidam: o servidor recalcula o progresso do objetivo pai.
-  const createSubIssueMutation = useMutation({
-    mutationFn: ({ parentId, title }: { parentId: string; title: string }) =>
-      createObjective({ title, kind: "task", parentObjectiveId: parentId }),
-    onSuccess: (subIssue) => {
-      queryClient.setQueryData<Objective[]>(["objectives"], (current) => [...(current ?? []), subIssue]);
-      queryClient.invalidateQueries({ queryKey: ["objectives"] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const updateSubIssueMutation = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: { title?: string; progress?: number } }) =>
-      updateObjective(id, patch),
-    onMutate: ({ id, patch }) => {
-      queryClient.setQueryData<Objective[]>(["objectives"], (current) =>
-        current?.map((o) => (o.id === id ? { ...o, ...patch } : o)),
-      );
-    },
-    onError: (error: Error) => toast.error(error.message),
-    // No erro, a revalidação também desfaz a atualização otimista.
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["objectives"] }),
-  });
-
-  const deleteSubIssueMutation = useMutation({
-    mutationFn: (id: string) => deleteObjective(id),
-    onSuccess: (_void, id) => {
-      queryClient.setQueryData<Objective[]>(["objectives"], (current) => current?.filter((o) => o.id !== id));
-      queryClient.invalidateQueries({ queryKey: ["objectives"] });
+      patchObjectivesCache((current) => {
+        const removed = collectSubtreeIds(current, id);
+        return current.filter((o) => !removed.has(o.id));
+      });
+      setFormState(null);
+      setDetailId(null);
+      revalidateObjectives();
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -211,9 +213,41 @@ export function ObjectivesPage() {
     mutationFn: ({ id, linkedPageId }: { id: string; linkedPageId: string | null }) =>
       updateObjective(id, { linkedPageId }),
     onSuccess: (objective) => {
-      setSelected(objective);
-      setDraft(objective);
-      queryClient.invalidateQueries({ queryKey: ["objectives"] });
+      patchObjectivesCache((current) => current.map((o) => (o.id === objective.id ? objective : o)));
+      revalidateObjectives();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  // Marcos, issues e subissues são todos "filhos": mesma criação/edição/exclusão em qualquer nível.
+  const createChildMutation = useMutation({
+    mutationFn: ({ parentId, title }: { parentId: string; title: string }) =>
+      createObjective({ title, kind: "task", parentObjectiveId: parentId }),
+    onSuccess: (child) => {
+      patchObjectivesCache((current) => [...current, child]);
+      revalidateObjectives();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const updateChildMutation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: { title?: string; progress?: number } }) =>
+      updateObjective(id, patch),
+    onMutate: ({ id, patch }) =>
+      patchObjectivesCache((current) => current.map((o) => (o.id === id ? { ...o, ...patch } : o))),
+    onError: (error: Error) => toast.error(error.message),
+    // No erro, a revalidação também desfaz a atualização otimista.
+    onSettled: revalidateObjectives,
+  });
+
+  const deleteChildMutation = useMutation({
+    mutationFn: (id: string) => deleteObjective(id),
+    onSuccess: (_void, id) => {
+      patchObjectivesCache((current) => {
+        const removed = collectSubtreeIds(current, id);
+        return current.filter((o) => !removed.has(o.id));
+      });
+      revalidateObjectives();
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -234,67 +268,147 @@ export function ObjectivesPage() {
   }
 
   const sorted = [...columns].sort((a, b) => a.order - b.order);
-  const visibleObjectives =
-    sprintFilter === "all" ? objectives : objectives.filter((o) => o.sprintId === sprintFilter);
+  const roots = useMemo(() => objectives.filter((o) => !o.parentObjectiveId), [objectives]);
+  const childrenMap = useMemo(() => buildChildrenMap(objectives), [objectives]);
+  const milestoneStatsById = useMemo(() => buildMilestoneStats(roots, childrenMap), [roots, childrenMap]);
+  const childrenOf = (id: string) => childrenMap.get(id) ?? [];
+
+  const query = search.trim().toLowerCase();
+  const visibleObjectives = roots.filter(
+    (o) =>
+      (sprintFilter === "all" || o.sprintId === sprintFilter) &&
+      (areaFilter === "all" || o.area === areaFilter) &&
+      (!query || o.title.toLowerCase().includes(query) || o.description.toLowerCase().includes(query)),
+  );
   const activeObjective = activeId ? visibleObjectives.find((o) => o.id === activeId) : null;
   const activeMobileColumnId = mobileColumnId ?? sorted[0]?.id ?? null;
+  const detail = detailId ? (objectives.find((o) => o.id === detailId) ?? null) : null;
+
+  // "Em andamento" = fora da primeira coluna (backlog) e fora das colunas de concluído.
+  const doneColumnIds = new Set(columns.filter((c) => c.isDone).map((c) => c.id));
+  const milestones = visibleObjectives.flatMap((o) => childrenOf(o.id));
+  const stats = {
+    total: visibleObjectives.length,
+    inProgress: visibleObjectives.filter(
+      (o) => o.columnId && o.columnId !== sorted[0]?.id && !doneColumnIds.has(o.columnId),
+    ).length,
+    milestonesDone: milestones.filter(isDone).length,
+    milestonesTotal: milestones.length,
+    milestoneAverage: averageProgress(milestones),
+  };
 
   const assigneeNameById = Object.fromEntries(
     teamUsers.map((user) => [user.id, user.name || user.username || user.id]),
   );
+  const sprintById = Object.fromEntries(sprints.map((sprint) => [sprint.id, sprint]));
   const sprintNameById = Object.fromEntries(sprints.map((sprint) => [sprint.id, sprint.name]));
-  const subIssueStatsById = useMemo(() => buildSubIssueStats(objectives), [objectives]);
+  const filteredSprint = sprintFilter === "all" ? null : (sprintById[sprintFilter] ?? null);
 
-  const subIssues = selected
-    ? objectives.filter((o) => o.parentObjectiveId === selected.id).sort((a, b) => a.order - b.order)
-    : [];
-  const hasSubIssues = subIssues.length > 0;
-  // Com sub-issues o progresso é derivado delas (mesma conta do servidor); o slider só vale sem elas.
-  const dialogProgress = hasSubIssues
-    ? Math.round(subIssues.reduce((sum, o) => sum + o.progress, 0) / subIssues.length)
-    : (draft.progress ?? 0);
-
-  function openDetail(objective: Objective) {
-    setSelected(objective);
-    setDraft(objective);
+  function openCreate(columnId?: string | null) {
+    const target = columnId ?? sorted[0]?.id;
+    if (!target) {
+      toast.error("Crie uma coluna antes de adicionar objetivos.");
+      return;
+    }
+    setFormState({ mode: "create", columnId: target });
   }
 
+  function changeColumn(objective: Objective, columnId: string) {
+    if (columnId === objective.columnId) return;
+    const order = objectives.filter((o) => o.columnId === columnId && o.id !== objective.id).length;
+    moveObjective(objective.id, columnId, order);
+    moveMutation.mutate({ id: objective.id, columnId, order });
+  }
+
+  function handleDeleteChild(node: Objective) {
+    if (childrenMap.has(node.id) && !window.confirm(`Excluir "${node.title}" e tudo que está dentro dele?`)) return;
+    deleteChildMutation.mutate(node.id);
+  }
+
+  function handleDeleteObjective(objective: Objective) {
+    const hasChildren = childrenMap.has(objective.id);
+    const message = hasChildren
+      ? `Excluir "${objective.title}" e todos os marcos, issues e subissues dele?`
+      : `Excluir "${objective.title}"?`;
+    if (window.confirm(message)) deleteObjectiveMutation.mutate(objective.id);
+  }
+
+  const formObjective = formState?.mode === "edit" ? detail : null;
+
   return (
-    <div className="relative flex h-[calc(100vh-4rem)] flex-col p-4 md:p-6 gap-3 md:gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="relative flex h-[calc(100vh-4rem)] flex-col gap-4 overflow-y-auto p-4 md:p-6">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Objetivos</h1>
-          <p className="text-sm text-muted-foreground">Metas e OKRs da equipe.</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">Gestão estratégica</p>
+          <h1 className="text-3xl font-bold tracking-tight">Objetivos</h1>
+          <p className="text-sm text-muted-foreground">
+            Do planejamento à entrega: acompanhe marcos, tarefas e subtarefas de cada área.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Select
-            value={sprintFilter}
-            onValueChange={(value) => {
-              if (value === "new") {
-                const name = window.prompt("Nome da sprint (ex: Semana de 08 a 14/09)");
-                if (name) createSprintMutation.mutate(name);
-                return;
-              }
-              setSprintFilter(value);
-            }}
-          >
-            <SelectTrigger className="h-9 w-44 sm:w-52">
+        <Button className="hidden md:inline-flex" onClick={() => openCreate()}>
+          <Plus className="mr-1 h-4 w-4" />
+          Novo objetivo
+        </Button>
+      </header>
+
+      <ObjectiveStats stats={stats} />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 md:mx-0 md:px-0">
+          <AreaChip active={areaFilter === "all"} onClick={() => setAreaFilter("all")}>
+            Todas
+          </AreaChip>
+          {OBJECTIVE_AREAS.map((area) => (
+            <AreaChip key={area.value} active={areaFilter === area.value} onClick={() => setAreaFilter(area.value)}>
+              <span className={cn("h-2 w-2 rounded-full", area.dot)} />
+              {area.label}
+            </AreaChip>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar objetivo..."
+              className="h-9 w-44 pl-8"
+            />
+          </div>
+          <Select value={sprintFilter} onValueChange={setSprintFilter}>
+            <SelectTrigger className="h-9 w-48 sm:w-56">
               <SelectValue placeholder="Todas as sprints" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as sprints</SelectItem>
               {sprints.map((sprint) => (
                 <SelectItem key={sprint.id} value={sprint.id}>
-                  {sprint.name}
+                  {sprintLabel(sprint)}
                 </SelectItem>
               ))}
-              <SelectItem value="new">+ Nova sprint</SelectItem>
             </SelectContent>
           </Select>
+          {filteredSprint && (
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              aria-label="Editar período da sprint"
+              title="Editar nome e período da sprint"
+              onClick={() => setSprintDialog({ open: true, sprint: filteredSprint })}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button variant="outline" size="sm" className="h-9" onClick={() => setSprintDialog({ open: true, sprint: null })}>
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            Sprint
+          </Button>
           <Button
             size="sm"
             variant="outline"
-            className="hidden md:inline-flex"
+            className="hidden h-9 md:inline-flex"
             onClick={() => {
               const title = window.prompt("Nome da coluna");
               if (title) createColumnMutation.mutate(title);
@@ -305,6 +419,10 @@ export function ObjectivesPage() {
           </Button>
         </div>
       </div>
+
+      <p className="hidden text-xs text-muted-foreground md:block">
+        ↗ Arraste os cartões para mudar de etapa, ou clique para abrir os marcos e as issues.
+      </p>
 
       {/* Abas de coluna só no celular — no desktop as colunas já ficam lado a lado */}
       <div className="md:hidden flex items-center gap-4 border-b border-border overflow-x-auto -mx-4 px-4">
@@ -327,7 +445,7 @@ export function ObjectivesPage() {
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="flex flex-1 min-h-0 gap-3 overflow-x-auto pb-2">
+        <div className="flex min-h-[28rem] flex-1 gap-3 overflow-x-auto pb-2">
           {sorted.map((column) => (
             <div
               key={column.id}
@@ -344,13 +462,13 @@ export function ObjectivesPage() {
                 onRename={(id, title) => renameColumnMutation.mutate({ id, title })}
                 onDelete={(id) => deleteColumnMutation.mutate(id)}
                 onToggleDone={(id, isDone) => toggleDoneMutation.mutate({ id, isDone })}
-                onOpenObjective={openDetail}
+                onOpenObjective={(objective) => setDetailId(objective.id)}
                 assigneeNameById={assigneeNameById}
                 sprintNameById={sprintNameById}
-                subIssueStatsById={subIssueStatsById}
+                milestoneStatsById={milestoneStatsById}
               />
               <button
-                onClick={() => createObjectiveMutation.mutate(column.id)}
+                onClick={() => openCreate(column.id)}
                 className="hidden md:flex items-center justify-center gap-1 rounded-md border border-dashed border-border py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40"
               >
                 <Plus className="h-3 w-3" /> Novo objetivo
@@ -366,7 +484,7 @@ export function ObjectivesPage() {
               overlay
               assigneeName={activeObjective.assignedUserId ? assigneeNameById[activeObjective.assignedUserId] : null}
               sprintName={activeObjective.sprintId ? sprintNameById[activeObjective.sprintId] : null}
-              subIssueStats={subIssueStatsById[activeObjective.id]}
+              milestoneStats={milestoneStatsById[activeObjective.id]}
             />
           )}
         </DragOverlay>
@@ -374,7 +492,7 @@ export function ObjectivesPage() {
 
       {activeMobileColumnId && (
         <button
-          onClick={() => createObjectiveMutation.mutate(activeMobileColumnId)}
+          onClick={() => openCreate(activeMobileColumnId)}
           className="md:hidden fixed bottom-6 right-6 z-20 flex items-center gap-2 rounded-full bg-primary pl-4 pr-5 py-3 text-sm font-medium text-primary-foreground shadow-lg active:scale-95 transition-transform"
         >
           <Plus className="h-4 w-4" />
@@ -382,184 +500,92 @@ export function ObjectivesPage() {
         </button>
       )}
 
-      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-base">Editar objetivo</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Título</Label>
-              <Input
-                ref={titleInputRef}
-                value={draft.title ?? ""}
-                onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Descrição</Label>
-              <Textarea
-                rows={3}
-                value={draft.description ?? ""}
-                onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Responsável</Label>
-                <Select
-                  value={draft.assignedUserId ?? "none"}
-                  onValueChange={(value) =>
-                    setDraft((d) => ({ ...d, assignedUserId: value === "none" ? null : value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Ninguém" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Ninguém</SelectItem>
-                    {teamUsers.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {user.name || user.username || user.id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Prazo</Label>
-                <Input
-                  type="date"
-                  value={draft.dueDate ?? ""}
-                  onChange={(e) => setDraft((d) => ({ ...d, dueDate: e.target.value || null }))}
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Sprint</Label>
-              <Select
-                value={draft.sprintId ?? "none"}
-                onValueChange={(value) => setDraft((d) => ({ ...d, sprintId: value === "none" ? null : value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Nenhuma" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhuma</SelectItem>
-                  {sprints.map((sprint) => (
-                    <SelectItem key={sprint.id} value={sprint.id}>
-                      {sprint.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Progresso</Label>
-                <span className="text-xs text-muted-foreground">{dialogProgress}%</span>
-              </div>
-              {hasSubIssues ? (
-                <p className="text-[11px] text-muted-foreground">Calculado a partir das sub-issues.</p>
-              ) : (
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={dialogProgress}
-                  onChange={(e) => setDraft((d) => ({ ...d, progress: Number(e.target.value) }))}
-                  className="w-full"
-                />
-              )}
-              <Progress value={dialogProgress} className="h-1.5" />
-            </div>
+      <ObjectiveDrawer
+        objective={detail}
+        onClose={() => setDetailId(null)}
+        columns={sorted}
+        sprint={detail?.sprintId ? sprintById[detail.sprintId] : null}
+        assigneeName={detail?.assignedUserId ? assigneeNameById[detail.assignedUserId] : null}
+        linkedPageTitle={detail?.linkedPageId ? workspacePages[detail.linkedPageId]?.title : undefined}
+        childrenOf={childrenOf}
+        onEdit={() => setFormState({ mode: "edit" })}
+        onChangeColumn={(columnId) => detail && changeColumn(detail, columnId)}
+        onOpenLinkedPage={() =>
+          detail?.linkedPageId && navigate({ to: "/workspace", search: { pageId: detail.linkedPageId } })
+        }
+        onPickLinkedPage={() => setPagePickerOpen(true)}
+        onUnlinkPage={() => detail && linkPageMutation.mutate({ id: detail.id, linkedPageId: null })}
+        onCreate={(parentId, title) => createChildMutation.mutate({ parentId, title })}
+        onToggle={(node, done) => updateChildMutation.mutate({ id: node.id, patch: { progress: done ? 100 : 0 } })}
+        onRename={(node, title) => updateChildMutation.mutate({ id: node.id, patch: { title } })}
+        onDelete={handleDeleteChild}
+      />
 
-            {selected && (
-              <SubIssueList
-                subIssues={subIssues}
-                assigneeNameById={assigneeNameById}
-                onCreate={(title) => createSubIssueMutation.mutate({ parentId: selected.id, title })}
-                onToggle={(subIssue, done) =>
-                  updateSubIssueMutation.mutate({ id: subIssue.id, patch: { progress: done ? 100 : 0 } })
-                }
-                onRename={(subIssue, title) => updateSubIssueMutation.mutate({ id: subIssue.id, patch: { title } })}
-                onDelete={(subIssue) => deleteSubIssueMutation.mutate(subIssue.id)}
-              />
-            )}
+      <ObjectiveFormDialog
+        open={formState !== null}
+        onOpenChange={(open) => !open && setFormState(null)}
+        objective={formObjective}
+        defaultColumnId={
+          formState?.mode === "create" ? formState.columnId : (detail?.columnId ?? sorted[0]?.id ?? "")
+        }
+        defaultArea={areaFilter === "all" ? null : areaFilter}
+        columns={sorted}
+        sprints={sprints}
+        teamUsers={teamUsers}
+        hasMilestones={Boolean(detail && childrenMap.has(detail.id))}
+        submitting={createObjectiveMutation.isPending || updateObjectiveMutation.isPending}
+        onSubmit={(values) => {
+          if (formState?.mode === "edit" && formObjective) {
+            updateObjectiveMutation.mutate({ objective: formObjective, values });
+          } else {
+            createObjectiveMutation.mutate(values);
+          }
+        }}
+        onDelete={formObjective ? () => handleDeleteObjective(formObjective) : undefined}
+      />
 
-            <div className="space-y-1">
-              <Label className="text-xs">Página vinculada</Label>
-              {selected?.linkedPageId ? (
-                <button
-                  onClick={() =>
-                    navigate({ to: "/workspace", search: { pageId: selected.linkedPageId! } })
-                  }
-                  className="group/chip flex w-fit items-center gap-1.5 rounded-full border border-border bg-accent/40 px-2.5 py-1 text-xs hover:border-primary/40"
-                >
-                  <Link2 className="h-3 w-3 text-primary" />
-                  {workspacePages[selected.linkedPageId]?.title || "Página do Workspace"}
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      linkPageMutation.mutate({ id: selected.id, linkedPageId: null });
-                    }}
-                    className="grid h-3.5 w-3.5 place-items-center rounded-full opacity-0 group-hover/chip:opacity-100 hover:bg-muted"
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </span>
-                </button>
-              ) : (
-                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setPagePickerOpen(true)}>
-                  <Link2 className="mr-1 h-3.5 w-3.5" />
-                  Vincular página
-                </Button>
-              )}
-            </div>
-          </div>
-          <DialogFooter className="sm:justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={() => selected && deleteObjectiveMutation.mutate(selected.id)}
-            >
-              <Trash2 className="mr-1 h-3.5 w-3.5" />
-              Excluir
-            </Button>
-            <Button
-              size="sm"
-              onClick={() =>
-                selected &&
-                updateObjectiveMutation.mutate({
-                  id: selected.id,
-                  patch: {
-                    title: draft.title,
-                    description: draft.description,
-                    dueDate: draft.dueDate,
-                    // Com sub-issues o progresso é derivado delas — não sobrescrever com o valor do slider.
-                    progress: hasSubIssues ? undefined : draft.progress,
-                    assignedUserId: draft.assignedUserId,
-                    sprintId: draft.sprintId,
-                  },
-                })
-              }
-              disabled={updateObjectiveMutation.isPending}
-            >
-              Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SprintDialog
+        open={sprintDialog.open}
+        onOpenChange={(open) => setSprintDialog((current) => ({ ...current, open }))}
+        sprint={sprintDialog.sprint}
+        suggestedName={`Sprint ${String(sprints.length + 1).padStart(2, "0")}`}
+        submitting={saveSprintMutation.isPending}
+        onSubmit={(values) => saveSprintMutation.mutate({ id: sprintDialog.sprint?.id ?? null, values })}
+      />
 
       <WorkspacePagePicker
         open={pagePickerOpen}
         onOpenChange={setPagePickerOpen}
         onSelect={(pageId) => {
-          if (selected) linkPageMutation.mutate({ id: selected.id, linkedPageId: pageId });
+          if (detail) linkPageMutation.mutate({ id: detail.id, linkedPageId: pageId });
           setPagePickerOpen(false);
         }}
       />
     </div>
+  );
+}
+
+function AreaChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex shrink-0 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "border-primary/50 bg-primary/10 text-primary"
+          : "border-border bg-card text-foreground hover:border-foreground/30",
+      )}
+    >
+      {children}
+    </button>
   );
 }
