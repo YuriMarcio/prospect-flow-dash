@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   DndContext,
@@ -40,7 +40,9 @@ import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
 import { ObjectiveColumn } from "@/components/objectives/ObjectiveColumn";
 import { ObjectiveCard } from "@/components/objectives/ObjectiveCard";
 import { WorkspacePagePicker } from "@/components/objectives/WorkspacePagePicker";
+import { SubIssueList } from "@/components/objectives/SubIssueList";
 import {
+  buildSubIssueStats,
   createObjective,
   createObjectiveColumn,
   createSprint,
@@ -165,6 +167,42 @@ export function ObjectivesPage() {
     onSuccess: (_void, id) => {
       removeObjective(id);
       setSelected(null);
+      // Mantém o cache em dia: sem isso, uma escrita posterior no cache ressuscitaria o item (e as sub-issues) na store.
+      queryClient.invalidateQueries({ queryKey: ["objectives"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  // Sub-issues escrevem direto no cache de ["objectives"] (a store é espelho dele via useObjectivesSync)
+  // e depois revalidam: o servidor recalcula o progresso do objetivo pai.
+  const createSubIssueMutation = useMutation({
+    mutationFn: ({ parentId, title }: { parentId: string; title: string }) =>
+      createObjective({ title, kind: "task", parentObjectiveId: parentId }),
+    onSuccess: (subIssue) => {
+      queryClient.setQueryData<Objective[]>(["objectives"], (current) => [...(current ?? []), subIssue]);
+      queryClient.invalidateQueries({ queryKey: ["objectives"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const updateSubIssueMutation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: { title?: string; progress?: number } }) =>
+      updateObjective(id, patch),
+    onMutate: ({ id, patch }) => {
+      queryClient.setQueryData<Objective[]>(["objectives"], (current) =>
+        current?.map((o) => (o.id === id ? { ...o, ...patch } : o)),
+      );
+    },
+    onError: (error: Error) => toast.error(error.message),
+    // No erro, a revalidação também desfaz a atualização otimista.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["objectives"] }),
+  });
+
+  const deleteSubIssueMutation = useMutation({
+    mutationFn: (id: string) => deleteObjective(id),
+    onSuccess: (_void, id) => {
+      queryClient.setQueryData<Objective[]>(["objectives"], (current) => current?.filter((o) => o.id !== id));
+      queryClient.invalidateQueries({ queryKey: ["objectives"] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -205,6 +243,16 @@ export function ObjectivesPage() {
     teamUsers.map((user) => [user.id, user.name || user.username || user.id]),
   );
   const sprintNameById = Object.fromEntries(sprints.map((sprint) => [sprint.id, sprint.name]));
+  const subIssueStatsById = useMemo(() => buildSubIssueStats(objectives), [objectives]);
+
+  const subIssues = selected
+    ? objectives.filter((o) => o.parentObjectiveId === selected.id).sort((a, b) => a.order - b.order)
+    : [];
+  const hasSubIssues = subIssues.length > 0;
+  // Com sub-issues o progresso é derivado delas (mesma conta do servidor); o slider só vale sem elas.
+  const dialogProgress = hasSubIssues
+    ? Math.round(subIssues.reduce((sum, o) => sum + o.progress, 0) / subIssues.length)
+    : (draft.progress ?? 0);
 
   function openDetail(objective: Objective) {
     setSelected(objective);
@@ -299,6 +347,7 @@ export function ObjectivesPage() {
                 onOpenObjective={openDetail}
                 assigneeNameById={assigneeNameById}
                 sprintNameById={sprintNameById}
+                subIssueStatsById={subIssueStatsById}
               />
               <button
                 onClick={() => createObjectiveMutation.mutate(column.id)}
@@ -317,6 +366,7 @@ export function ObjectivesPage() {
               overlay
               assigneeName={activeObjective.assignedUserId ? assigneeNameById[activeObjective.assignedUserId] : null}
               sprintName={activeObjective.sprintId ? sprintNameById[activeObjective.sprintId] : null}
+              subIssueStats={subIssueStatsById[activeObjective.id]}
             />
           )}
         </DragOverlay>
@@ -333,7 +383,7 @@ export function ObjectivesPage() {
       )}
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base">Editar objetivo</DialogTitle>
           </DialogHeader>
@@ -407,19 +457,36 @@ export function ObjectivesPage() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label className="text-xs">Progresso</Label>
-                <span className="text-xs text-muted-foreground">{draft.progress ?? 0}%</span>
+                <span className="text-xs text-muted-foreground">{dialogProgress}%</span>
               </div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={draft.progress ?? 0}
-                onChange={(e) => setDraft((d) => ({ ...d, progress: Number(e.target.value) }))}
-                className="w-full"
-              />
-              <Progress value={draft.progress ?? 0} className="h-1.5" />
+              {hasSubIssues ? (
+                <p className="text-[11px] text-muted-foreground">Calculado a partir das sub-issues.</p>
+              ) : (
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={dialogProgress}
+                  onChange={(e) => setDraft((d) => ({ ...d, progress: Number(e.target.value) }))}
+                  className="w-full"
+                />
+              )}
+              <Progress value={dialogProgress} className="h-1.5" />
             </div>
+
+            {selected && (
+              <SubIssueList
+                subIssues={subIssues}
+                assigneeNameById={assigneeNameById}
+                onCreate={(title) => createSubIssueMutation.mutate({ parentId: selected.id, title })}
+                onToggle={(subIssue, done) =>
+                  updateSubIssueMutation.mutate({ id: subIssue.id, patch: { progress: done ? 100 : 0 } })
+                }
+                onRename={(subIssue, title) => updateSubIssueMutation.mutate({ id: subIssue.id, patch: { title } })}
+                onDelete={(subIssue) => deleteSubIssueMutation.mutate(subIssue.id)}
+              />
+            )}
 
             <div className="space-y-1">
               <Label className="text-xs">Página vinculada</Label>
@@ -470,7 +537,8 @@ export function ObjectivesPage() {
                     title: draft.title,
                     description: draft.description,
                     dueDate: draft.dueDate,
-                    progress: draft.progress,
+                    // Com sub-issues o progresso é derivado delas — não sobrescrever com o valor do slider.
+                    progress: hasSubIssues ? undefined : draft.progress,
                     assignedUserId: draft.assignedUserId,
                     sprintId: draft.sprintId,
                   },

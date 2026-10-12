@@ -162,6 +162,13 @@ export async function findChildren(parentObjectiveId: string): Promise<Objective
   return data ?? [];
 }
 
+export async function findById(id: string): Promise<ObjectiveRow | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("objectives").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function update(id: string, patch: Record<string, unknown>): Promise<ObjectiveRow> {
   const supabase = getSupabase();
   const { data, error } = await supabase
@@ -177,6 +184,12 @@ export async function update(id: string, patch: Record<string, unknown>): Promis
 export async function remove(id: string): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("objectives").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function removeChildren(parentObjectiveId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("objectives").delete().eq("parent_objective_id", parentObjectiveId);
   if (error) throw new Error(error.message);
 }
 

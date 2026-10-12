@@ -45,5 +45,7 @@ export const useObjectivesStore = create<ObjectivesState>()((set) => ({
       };
     }),
 
-  removeObjective: (id) => set((s) => ({ objectives: s.objectives.filter((o) => o.id !== id) })),
+  // Excluir um objetivo leva as sub-issues junto (o servidor faz o mesmo).
+  removeObjective: (id) =>
+    set((s) => ({ objectives: s.objectives.filter((o) => o.id !== id && o.parentObjectiveId !== id) })),
 }));

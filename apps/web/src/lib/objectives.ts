@@ -21,7 +21,7 @@ export interface Objective {
   linkedPageId: string | null;
   sprintId: string | null;
   assignedUserId: string | null;
-  /** "task" = tarefa filha (mini-card criado pelo planejador por IA), não aparece no board. */
+  /** "task" = sub-issue (tarefa filha, criada na mão ou pelo planejador por IA); com `parentObjectiveId` não aparece no board. */
   kind: "objective" | "task";
   parentObjectiveId: string | null;
   createdAt: string;
@@ -73,6 +73,27 @@ interface SprintRow {
   name: string;
   start_date: string;
   end_date: string;
+}
+
+export interface SubIssueStats {
+  done: number;
+  total: number;
+}
+
+export function isSubIssueDone(subIssue: Objective): boolean {
+  return subIssue.progress >= 100;
+}
+
+/** Contagem de sub-issues (concluídas / total) por objetivo pai. */
+export function buildSubIssueStats(objectives: Objective[]): Record<string, SubIssueStats> {
+  const stats: Record<string, SubIssueStats> = {};
+  for (const objective of objectives) {
+    if (!objective.parentObjectiveId) continue;
+    const entry = (stats[objective.parentObjectiveId] ??= { done: 0, total: 0 });
+    entry.total += 1;
+    if (isSubIssueDone(objective)) entry.done += 1;
+  }
+  return stats;
 }
 
 function fromColumnRow(row: ObjectiveColumnRow): ObjectiveColumn {
@@ -138,11 +159,14 @@ export async function listObjectives(): Promise<Objective[]> {
 }
 
 export async function createObjective(input: {
-  columnId: string;
+  /** Obrigatório pra itens de topo; sub-issues (com `parentObjectiveId`) não têm coluna. */
+  columnId?: string;
   title: string;
   description?: string;
   dueDate?: string | null;
   owner?: string | null;
+  kind?: "objective" | "task";
+  parentObjectiveId?: string;
 }): Promise<Objective> {
   const row = await request<ObjectiveRow>("/objectives", { method: "POST", body: JSON.stringify(input) });
   return fromRow(row);

@@ -43,7 +43,8 @@ export async function createObjectiveService(input: {
   assignedUserId?: string | null;
 }) {
   if (!input.title?.trim()) throw new Error("Informe um título para o objetivo.");
-  const kind = input.kind ?? "objective";
+  // Sub-issue é uma "task" filha; só o item sem pai é "objective" por padrão.
+  const kind = input.kind ?? (input.parentObjectiveId ? "task" : "objective");
   // A hierarquia é sobre aninhamento (tem pai ou não), não sobre "kind" — uma
   // tarefa pode ser avulsa (sem pai, aparece no board igual um objetivo) ou
   // aninhada dentro de um objetivo. "kind" é só rótulo/ícone, não estrutura.
@@ -54,20 +55,68 @@ export async function createObjectiveService(input: {
     throw new Error("Informe a coluna do item.");
   }
 
+  if (input.parentObjectiveId) {
+    const parent = await objectivesRepository.findById(input.parentObjectiveId);
+    if (!parent) throw new Error("Objetivo pai não encontrado.");
+    // Só um nível de aninhamento: sub-issue não tem sub-issues.
+    if (parent.parent_objective_id) throw new Error("Uma sub-issue não pode ter sub-issues.");
+  }
+
   const all = await objectivesRepository.findAll();
-  const order = input.parentObjectiveId
-    ? all.filter((o) => o.parent_objective_id === input.parentObjectiveId).length
+  const siblingOrders = input.parentObjectiveId
+    ? all.filter((o) => o.parent_objective_id === input.parentObjectiveId).map((o) => o.order)
+    : null;
+  // Pro filho, "último + 1" em vez de contagem: excluir uma sub-issue do meio não pode gerar ordem repetida.
+  const order = siblingOrders
+    ? Math.max(-1, ...siblingOrders) + 1
     : all.filter((o) => !o.parent_objective_id && o.column_id === input.columnId).length;
 
-  return objectivesRepository.create({ ...input, title: input.title.trim(), order, kind });
+  const created = await objectivesRepository.create({ ...input, title: input.title.trim(), order, kind });
+  await syncParentProgress(created.parent_objective_id);
+  return created;
+}
+
+/**
+ * O progresso de um objetivo com sub-issues é a média do progresso delas
+ * (com sub-issues só em 0/100, vira "concluídas / total"). Fica no servidor pra
+ * valer igual pra qualquer cliente — web, planejador por IA, etc.
+ */
+async function syncParentProgress(parentId: string | null | undefined) {
+  if (!parentId) return;
+  const children = await objectivesRepository.findChildren(parentId);
+  if (children.length === 0) return;
+  const progress = Math.round(children.reduce((sum, child) => sum + child.progress, 0) / children.length);
+  await objectivesRepository.update(parentId, { progress });
 }
 
 export async function updateObjectiveService(id: string, patch: Record<string, unknown>) {
-  return objectivesRepository.update(id, patch);
+  const current = await objectivesRepository.findById(id);
+  if (!current) throw new Error("Objetivo não encontrado.");
+
+  let safePatch = patch;
+  if ("progress" in patch && !current.parent_objective_id) {
+    // Progresso manual é ignorado quando existem sub-issues — ele é derivado delas.
+    const children = await objectivesRepository.findChildren(id);
+    if (children.length > 0) {
+      const { progress: _ignored, ...rest } = patch;
+      safePatch = rest;
+    }
+  }
+
+  const updated = await objectivesRepository.update(id, safePatch);
+
+  // Pai antigo e novo (se mudou de pai) precisam recalcular.
+  const parentIds = new Set([current.parent_objective_id, updated.parent_objective_id]);
+  for (const parentId of parentIds) await syncParentProgress(parentId);
+  return updated;
 }
 
 export async function deleteObjectiveService(id: string) {
+  const current = await objectivesRepository.findById(id);
+  // Sem depender de ON DELETE CASCADE no banco: sub-issues não ficam órfãs.
+  await objectivesRepository.removeChildren(id);
   await objectivesRepository.remove(id);
+  await syncParentProgress(current?.parent_objective_id);
 }
 
 export async function listSprintsService() {

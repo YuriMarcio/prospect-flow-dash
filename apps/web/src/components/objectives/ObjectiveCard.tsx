@@ -1,7 +1,7 @@
 import { useDraggable } from "@dnd-kit/core";
-import { CalendarClock, Layers, Link2 } from "lucide-react";
+import { CalendarClock, Layers, Link2, ListChecks } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import type { Objective } from "@/lib/objectives";
+import type { Objective, SubIssueStats } from "@/lib/objectives";
 
 export function ObjectiveCard({
   objective,
@@ -9,12 +9,14 @@ export function ObjectiveCard({
   onOpen,
   assigneeName,
   sprintName,
+  subIssueStats,
 }: {
   objective: Objective;
   overlay?: boolean;
   onOpen?: (objective: Objective) => void;
   assigneeName?: string | null;
   sprintName?: string | null;
+  subIssueStats?: SubIssueStats;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: objective.id,
@@ -72,6 +74,15 @@ export function ObjectiveCard({
             </span>
           )}
           {objective.linkedPageId && <Link2 className="h-3 w-3 text-muted-foreground" />}
+          {subIssueStats && (
+            <span
+              title="Sub-issues concluídas"
+              className="flex items-center gap-1 text-[11px] text-muted-foreground"
+            >
+              <ListChecks className="h-3 w-3" />
+              {subIssueStats.done}/{subIssueStats.total}
+            </span>
+          )}
         </div>
         {dueLabel && (
           <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
