@@ -450,7 +450,7 @@ export function ObjectivesPage() {
             <div
               key={column.id}
               className={cn(
-                "h-full flex-col gap-2 w-full md:w-auto",
+                "h-full flex-col w-full md:w-auto",
                 column.id === activeMobileColumnId ? "flex" : "hidden md:flex",
               )}
             >
@@ -463,16 +463,11 @@ export function ObjectivesPage() {
                 onDelete={(id) => deleteColumnMutation.mutate(id)}
                 onToggleDone={(id, isDone) => toggleDoneMutation.mutate({ id, isDone })}
                 onOpenObjective={(objective) => setDetailId(objective.id)}
+                onAdd={() => openCreate(column.id)}
                 assigneeNameById={assigneeNameById}
                 sprintNameById={sprintNameById}
                 milestoneStatsById={milestoneStatsById}
               />
-              <button
-                onClick={() => openCreate(column.id)}
-                className="hidden md:flex items-center justify-center gap-1 rounded-md border border-dashed border-border py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40"
-              >
-                <Plus className="h-3 w-3" /> Novo objetivo
-              </button>
             </div>
           ))}
         </div>

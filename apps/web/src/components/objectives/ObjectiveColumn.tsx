@@ -1,5 +1,5 @@
 import { useDroppable } from "@dnd-kit/core";
-import { CheckCircle2, MoreHorizontal } from "lucide-react";
+import { CheckCircle2, MoreHorizontal, Plus } from "lucide-react";
 import type { Objective, ObjectiveColumn as ObjectiveColumnT } from "@/lib/objectives";
 import type { MilestoneStats } from "@/lib/objectiveTree";
 import { ObjectiveCard } from "./ObjectiveCard";
@@ -17,6 +17,7 @@ export function ObjectiveColumn({
   onDelete,
   onToggleDone,
   onOpenObjective,
+  onAdd,
   assigneeNameById,
   sprintNameById,
   milestoneStatsById,
@@ -27,6 +28,8 @@ export function ObjectiveColumn({
   onDelete: (id: string) => void;
   onToggleDone: (id: string, isDone: boolean) => void;
   onOpenObjective: (objective: Objective) => void;
+  /** Cria um objetivo já nesta coluna. */
+  onAdd: () => void;
   assigneeNameById: Record<string, string>;
   sprintNameById: Record<string, string>;
   milestoneStatsById: Record<string, MilestoneStats>;
@@ -46,6 +49,15 @@ export function ObjectiveColumn({
         <span className="text-xs font-medium text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 min-w-5 text-center">
           {objectives.length}
         </span>
+        <button
+          type="button"
+          onClick={onAdd}
+          aria-label={`Novo objetivo em ${column.title}`}
+          title="Novo objetivo"
+          className="h-6 w-6 grid place-items-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="h-6 w-6 grid place-items-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
@@ -91,6 +103,16 @@ export function ObjectiveColumn({
             Solte objetivos aqui
           </div>
         )}
+
+        {/* Logo abaixo do último card: acompanha a lista em vez de ficar no rodapé da coluna. */}
+        <button
+          type="button"
+          onClick={onAdd}
+          className="hidden md:flex w-full items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Novo objetivo
+        </button>
       </div>
     </div>
   );
