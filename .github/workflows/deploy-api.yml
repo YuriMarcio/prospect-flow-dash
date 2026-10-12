@@ -1,12 +1,18 @@
 name: Deploy API to VPS
 
 on:
+  # Disparo manual (aba Actions → Run workflow) pra redeployar sem precisar de um commit.
+  workflow_dispatch:
   push:
     branches:
       - master
     paths:
       - "apps/api/**"
       - "packages/types/**"
+      # O Dockerfile da API faz `npm ci` a partir destes dois — uma correção só no
+      # lockfile também precisa redeployar a API, senão ela fica na versão antiga.
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/deploy-api.yml"
 
 jobs:
