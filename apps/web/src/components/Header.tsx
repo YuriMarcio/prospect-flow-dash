@@ -6,6 +6,7 @@ import { useMobileSidebarStore } from "@/store/mobileSidebar";
 import { useLeadModalStore } from "@/store/leadModal";
 import { useAuthStore } from "@/store/auth";
 import { logout } from "@/lib/api";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { detachDevice } from "@/lib/push";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -30,6 +31,7 @@ export function Header() {
   const openLead = useLeadModalStore((s) => s.open);
   const { notifications, markRead, markAllRead, dismiss, snooze } = useNotificationsStore();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const displayName = useAuthStore((s) => s.displayName);
   const clearAuth = useAuthStore((s) => s.clear);
   const initials = (displayName ?? "?").slice(0, 2).toUpperCase();
@@ -50,32 +52,44 @@ export function Header() {
   const unreadCount = dueNow.length;
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border glass px-4 md:px-6">
+    <header className="sticky top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-2 border-b border-border glass px-3 pt-[env(safe-area-inset-top)] md:h-16 md:gap-3 md:px-6 md:pt-0">
       <button
         onClick={toggleMobileSidebar}
-        className="md:hidden p-2 -ml-2 rounded-md hover:bg-accent"
+        className="md:hidden grid h-10 w-10 shrink-0 place-items-center rounded-lg hover:bg-accent active:bg-accent"
         aria-label="Abrir menu"
       >
         <Menu className="h-5 w-5" />
       </button>
 
-      <div className="relative flex-1 max-w-xl">
+      <div className="relative min-w-0 flex-1 md:max-w-xl">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar leads, empresas, tags, telefones..."
-          className="w-full h-10 pl-10 pr-4 rounded-lg bg-muted/60 border border-transparent focus:bg-card focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 text-sm transition"
+          placeholder={isMobile ? "Buscar leads…" : "Buscar leads, empresas, tags, telefones..."}
+          // 16px no celular: abaixo disso o iOS dá zoom na tela ao focar o campo
+          className="w-full h-10 pl-10 pr-9 rounded-lg bg-muted/60 border border-transparent focus:bg-card focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 text-base md:text-sm transition"
         />
-        <kbd className="hidden md:inline-flex absolute right-3 top-1/2 -translate-y-1/2 items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground bg-background">
-          ⌘K
-        </kbd>
+        {search ? (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            className="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Limpar busca"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : (
+          <kbd className="hidden md:inline-flex absolute right-3 top-1/2 -translate-y-1/2 items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground bg-background">
+            ⌘K
+          </kbd>
+        )}
       </div>
 
-      <div className="ml-auto flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-0.5 md:ml-auto md:gap-1">
         <button
           onClick={toggle}
-          className="h-9 w-9 inline-flex items-center justify-center rounded-lg hover:bg-accent transition"
+          className="hidden h-9 w-9 items-center justify-center rounded-lg hover:bg-accent transition sm:inline-flex"
           aria-label="Alternar tema"
         >
           {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -84,20 +98,23 @@ export function Header() {
         {/* Notifications bell */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="relative h-9 w-9 inline-flex items-center justify-center rounded-lg hover:bg-accent transition">
+            <button
+              className="relative inline-flex h-10 w-10 items-center justify-center rounded-lg hover:bg-accent transition md:h-9 md:w-9"
+              aria-label="Notificações"
+            >
               <Bell className="h-4 w-4" />
               {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 h-4 w-4 rounded-full bg-destructive text-[9px] font-bold text-white ring-2 ring-background flex items-center justify-center">
+                <span className="absolute top-1.5 right-1.5 h-4 w-4 rounded-full bg-destructive text-[9px] font-bold text-white ring-2 ring-background flex items-center justify-center md:top-1 md:right-1">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
               {unreadCount === 0 && upcoming.length > 0 && (
-                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-background" />
+                <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary ring-2 ring-background md:top-1.5 md:right-1.5" />
               )}
             </button>
           </DropdownMenuTrigger>
 
-          <DropdownMenuContent align="end" className="w-96 p-0">
+          <DropdownMenuContent align="end" collisionPadding={12} className="w-[calc(100vw-1.5rem)] p-0 sm:w-96">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <span className="font-semibold text-sm">Notificações</span>
               {notifications.some((n) => !n.read) && (
@@ -110,7 +127,7 @@ export function Header() {
               )}
             </div>
 
-            <div className="max-h-105 overflow-y-auto">
+            <div className="max-h-[min(26rem,70dvh)] overflow-y-auto">
               {/* Due now */}
               {dueNow.length > 0 && (
                 <>
@@ -134,16 +151,17 @@ export function Header() {
                           Agendado {formatRelativeTime(n.createdAt)}
                         </p>
                       </div>
-                      <div className="flex flex-col gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex shrink-0 flex-col gap-1 transition-opacity md:opacity-0 md:group-hover:opacity-100">
                         <button
                           onClick={() => snooze(n.id, 24)}
-                          className="text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-accent"
+                          className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-accent md:text-[10px] md:px-1.5 md:py-0.5"
                         >
                           +24h
                         </button>
                         <button
                           onClick={() => dismiss(n.id)}
-                          className="text-[10px] text-muted-foreground hover:text-destructive px-1.5 py-0.5 rounded hover:bg-destructive/10"
+                          className="grid place-items-center text-[10px] text-muted-foreground hover:text-destructive px-2 py-1 rounded hover:bg-destructive/10 md:px-1.5 md:py-0.5"
+                          aria-label="Dispensar notificação"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -176,7 +194,8 @@ export function Header() {
                       </div>
                       <button
                         onClick={() => dismiss(n.id)}
-                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1 rounded"
+                        className="shrink-0 transition-opacity text-muted-foreground hover:text-destructive p-1.5 rounded md:p-1 md:opacity-0 md:group-hover:opacity-100"
+                        aria-label="Dispensar notificação"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -197,8 +216,11 @@ export function Header() {
         {/* User menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 ml-1 pl-1 pr-2 py-1 rounded-lg hover:bg-accent transition">
-              <Avatar className="h-7 w-7">
+            <button
+              className="flex items-center gap-2 rounded-lg p-1 hover:bg-accent transition md:ml-1 md:pr-2"
+              aria-label="Minha conta"
+            >
+              <Avatar className="h-8 w-8 md:h-7 md:w-7">
                 <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">
                   {initials}
                 </AvatarFallback>
@@ -209,9 +231,14 @@ export function Header() {
               </div>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" collisionPadding={12}>
             <DropdownMenuLabel>Minha conta</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {/* Em telas pequenas o botão de tema sai do header e vem pra cá */}
+            <DropdownMenuItem onClick={toggle} className="sm:hidden">
+              {theme === "dark" ? <Sun /> : <Moon />}
+              {theme === "dark" ? "Tema claro" : "Tema escuro"}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={handleLogout} className="text-destructive">
               Sair
             </DropdownMenuItem>

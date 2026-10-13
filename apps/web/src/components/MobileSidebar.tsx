@@ -31,7 +31,7 @@ export function MobileSidebar() {
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetContent side="left" className="w-[280px] p-0 bg-sidebar border-r border-sidebar-border">
+      <SheetContent side="left" className="w-[280px] overflow-y-auto p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] bg-sidebar border-r border-sidebar-border">
         <SheetHeader className="sr-only">
           <SheetTitle>Menu</SheetTitle>
           <SheetDescription>Navegação principal</SheetDescription>

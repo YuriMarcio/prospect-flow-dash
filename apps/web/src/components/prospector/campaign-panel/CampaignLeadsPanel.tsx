@@ -23,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { InstagramFormDialog } from "@/components/automacao/InstagramFormDialog";
 import { IfoodFormDialog } from "@/components/automacao/IfoodFormDialog";
 import { InstaDeliveryFormDialog } from "@/components/automacao/InstaDeliveryFormDialog";
@@ -103,6 +104,7 @@ export function CampaignLeadsPanel({
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [quickCount, setQuickCount] = useState("20");
+  const [quickOpen, setQuickOpen] = useState(false);
   const [day, setDay] = useState<DispatchDay>("today");
   const [customDate, setCustomDate] = useState("");
   const [formState, setFormState] = useState<{ lead: CampaignLead | null } | null>(null);
@@ -224,8 +226,37 @@ export function CampaignLeadsPanel({
   const hasLeads = leads.length > 0;
   const activeFilters = FILTERS.filter(({ value }) => value !== "failed" || counts.failed > 0);
 
+  /** "Marcar os primeiros [20] [Marcar]" — inline no desktop, dentro de um popover no celular. */
+  const quickSelectControls = (afterSelect?: () => void) => (
+    <>
+      Marcar os primeiros
+      <Input
+        type="number"
+        inputMode="numeric"
+        min={1}
+        value={quickCount}
+        onChange={(e) => setQuickCount(e.target.value)}
+        className="h-10 w-20 px-2 text-center md:h-8 md:w-16 md:text-xs"
+        aria-label="Quantos leads marcar"
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-10 md:h-8"
+        onClick={() => {
+          selectFirst();
+          afterSelect?.();
+        }}
+        disabled={selectableVisible.length === 0}
+      >
+        Marcar
+      </Button>
+    </>
+  );
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card">
+    <div className="flex flex-col rounded-xl border border-border bg-card md:min-h-0 md:flex-1 md:overflow-hidden">
       {/* Topo: título, ações e filtros */}
       <div className="shrink-0 space-y-3 border-b border-border px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -238,7 +269,7 @@ export function CampaignLeadsPanel({
           <div className="flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" className="max-md:h-10">
                   <Download className="mr-1.5 h-3.5 w-3.5" />
                   Adicionar
                   <ChevronDown className="ml-1 h-3.5 w-3.5" />
@@ -252,7 +283,7 @@ export function CampaignLeadsPanel({
                 <DropdownMenuItem onClick={() => setAddExistingOpen(true)}>Do Kanban geral…</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button size="sm" onClick={() => setFormState({ lead: null })}>
+            <Button size="sm" className="max-md:h-10" onClick={() => setFormState({ lead: null })}>
               <Plus className="mr-1 h-3.5 w-3.5" />
               Novo lead
             </Button>
@@ -260,15 +291,16 @@ export function CampaignLeadsPanel({
         </div>
 
         {hasLeads && (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-between">
+            {/* Celular: os filtros ficam numa faixa de uma linha só, que rola pro lado */}
+            <div className="no-scrollbar -mx-4 flex items-center gap-1.5 overflow-x-auto px-4 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
               {activeFilters.map(({ value, label }) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setFilter(value)}
                   className={cn(
-                    "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+                    "shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium transition-colors md:px-2.5 md:py-1",
                     filter === value
                       ? "border-primary/50 bg-primary/10 text-primary"
                       : "border-border bg-card text-foreground hover:border-foreground/30",
@@ -278,16 +310,16 @@ export function CampaignLeadsPanel({
                 </button>
               ))}
             </div>
-            <div className="relative">
+            <div className="relative md:w-auto">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar lead…" className="h-8 w-44 pl-8 text-xs" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar lead…" className="h-10 pl-8 md:h-8 md:w-44 md:text-xs" />
             </div>
           </div>
         )}
       </div>
 
       {/* Lista */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="md:min-h-0 md:flex-1 md:overflow-y-auto">
         {leadsQuery.isLoading ? (
           <p className="px-4 py-12 text-center text-sm text-muted-foreground">Carregando leads…</p>
         ) : !hasLeads ? (
@@ -314,6 +346,16 @@ export function CampaignLeadsPanel({
           <p className="px-4 py-12 text-center text-sm text-muted-foreground">Nenhum lead com esse filtro.</p>
         ) : (
           <>
+            {/* Celular: o "marcar todos" do cabeçalho da tabela vira esta linha */}
+            <label className="flex cursor-pointer items-center gap-3 border-b border-border bg-muted/40 px-4 py-3 text-xs font-medium text-muted-foreground md:hidden">
+              <Checkbox
+                checked={allVisibleSelected}
+                disabled={selectableVisible.length === 0}
+                onCheckedChange={(checked) => toggleAllVisible(checked === true)}
+              />
+              Selecionar todos ({selectableVisible.length})
+            </label>
+
             <div className="sticky top-0 z-10 hidden grid-cols-[1.25rem_minmax(0,2fr)_minmax(0,1fr)_6.5rem_9.5rem_1.75rem] items-center gap-x-3 border-b border-border bg-muted/70 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur md:grid">
               <Checkbox
                 checked={allVisibleSelected}
@@ -336,12 +378,12 @@ export function CampaignLeadsPanel({
                   key={lead.id}
                   onClick={() => openLead(lead.id)}
                   className={cn(
-                    "grid cursor-pointer grid-cols-[1.25rem_minmax(0,1fr)_1.75rem] items-center gap-x-3 gap-y-1 border-b border-border/60 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-accent/40",
+                    "grid cursor-pointer grid-cols-[1.25rem_minmax(0,1fr)_2.25rem] items-center gap-x-3 gap-y-1 border-b border-border/60 px-4 py-3 transition-colors last:border-b-0 hover:bg-accent/40 active:bg-accent/40 md:py-2.5",
                     "md:grid-cols-[1.25rem_minmax(0,2fr)_minmax(0,1fr)_6.5rem_9.5rem_1.75rem]",
                     selected.has(lead.id) && reason === null && "bg-primary/5",
                   )}
                 >
-                  <span onClick={(e) => e.stopPropagation()} title={reason ?? undefined}>
+                  <span onClick={(e) => e.stopPropagation()} title={reason ?? undefined} className="-m-3 p-3 md:m-0 md:p-0">
                     <Checkbox
                       checked={selected.has(lead.id) && reason === null}
                       disabled={reason !== null}
@@ -382,7 +424,7 @@ export function CampaignLeadsPanel({
                         <button
                           type="button"
                           aria-label={`Ações de ${lead.companyName}`}
-                          className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          className="grid h-9 w-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:h-7 md:w-7"
                         >
                           <MoreHorizontal className="h-4 w-4" />
                         </button>
@@ -414,39 +456,41 @@ export function CampaignLeadsPanel({
         )}
       </div>
 
-      {/* Barra de envio: escolher quem e mandar */}
+      {/* Barra de envio: escolher quem e mandar. No celular fica colada no rodapé da tela enquanto a lista rola. */}
       {hasLeads && (
-        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border bg-muted/30 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <p className="text-sm">
-              <span className="font-semibold tabular-nums">{selectedIds.length}</span>{" "}
-              <span className="text-muted-foreground">selecionado{selectedIds.length === 1 ? "" : "s"}</span>
-            </p>
-            {selectedIds.length > 0 && (
-              <button type="button" onClick={() => setSelected(new Set())} className="text-xs text-muted-foreground hover:text-foreground hover:underline">
-                Limpar
-              </button>
-            )}
+        <div className="sticky bottom-0 z-10 flex shrink-0 flex-col gap-2 rounded-b-xl border-t border-border bg-card px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-10px_20px_-14px_rgb(0_0_0/0.6)] md:static md:flex-row md:flex-wrap md:items-center md:gap-x-4 md:gap-y-2 md:rounded-none md:bg-muted/30 md:pb-3 md:shadow-none">
+          <div className="flex items-center justify-between gap-2 md:justify-start">
+            <div className="flex items-center gap-2">
+              <p className="text-sm">
+                <span className="font-semibold tabular-nums">{selectedIds.length}</span>{" "}
+                <span className="text-muted-foreground">selecionado{selectedIds.length === 1 ? "" : "s"}</span>
+              </p>
+              {selectedIds.length > 0 && (
+                <button type="button" onClick={() => setSelected(new Set())} className="p-1 text-xs text-muted-foreground hover:text-foreground hover:underline">
+                  Limpar
+                </button>
+              )}
+            </div>
+
+            {/* Celular: "marcar os primeiros N" fica atrás de um botão */}
+            <Popover open={quickOpen} onOpenChange={setQuickOpen}>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="ghost" size="sm" className="h-9 px-2 text-xs md:hidden" disabled={selectableVisible.length === 0}>
+                  Marcar os primeiros…
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent side="top" align="end" className="flex w-auto items-center gap-2 text-sm text-muted-foreground">
+                {quickSelectControls(() => setQuickOpen(false))}
+              </PopoverContent>
+            </Popover>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            Marcar os primeiros
-            <Input
-              type="number"
-              min={1}
-              value={quickCount}
-              onChange={(e) => setQuickCount(e.target.value)}
-              className="h-8 w-16 px-2 text-center text-xs"
-              aria-label="Quantos leads marcar"
-            />
-            <Button type="button" variant="outline" size="sm" className="h-8" onClick={selectFirst} disabled={selectableVisible.length === 0}>
-              Marcar
-            </Button>
-          </div>
+          <div className="hidden items-center gap-1.5 text-xs text-muted-foreground md:flex">{quickSelectControls()}</div>
 
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* Celular: os controles de envio só aparecem quando há alguém marcado (barra enxuta enquanto nada está selecionado) */}
+          <div className={cn("flex-wrap items-center gap-2 md:ml-auto md:flex", selectedIds.length > 0 ? "flex" : "hidden")}>
             <Select value={day} onValueChange={(value) => setDay(value as DispatchDay)}>
-              <SelectTrigger className="h-9 w-32" aria-label="Quando enviar">
+              <SelectTrigger className="h-11 w-28 md:h-9 md:w-32" aria-label="Quando enviar">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -456,9 +500,10 @@ export function CampaignLeadsPanel({
               </SelectContent>
             </Select>
             {day === "custom" && (
-              <Input type="date" min={tomorrowKey} value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="h-9 w-40" />
+              <Input type="date" min={tomorrowKey} value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="h-11 min-w-0 flex-1 md:h-9 md:w-40 md:flex-none" />
             )}
             <Button
+              className="h-11 min-w-40 flex-1 md:h-9 md:flex-none"
               onClick={() => dispatchMutation.mutate(selectedIds)}
               disabled={selectedIds.length === 0 || !dispatchReady || dispatchMutation.isPending}
             >

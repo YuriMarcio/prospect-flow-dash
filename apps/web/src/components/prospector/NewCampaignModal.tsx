@@ -55,7 +55,7 @@ export function NewCampaignModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent mobileSheet className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Rocket className="h-4 w-4 text-primary" />
@@ -71,6 +71,7 @@ export function NewCampaignModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="ex: Delivery Ipanema"
+              className="max-sm:h-11"
             />
           </div>
 
@@ -80,6 +81,7 @@ export function NewCampaignModal({
               value={region}
               onChange={(e) => setRegion(e.target.value)}
               placeholder="ex: Ilha do Governador"
+              className="max-sm:h-11"
             />
             <p className="text-[11px] text-muted-foreground">
               A região que essa campanha cuida. Aparece embaixo do nome e já vem preenchida nas capturas.
@@ -89,7 +91,7 @@ export function NewCampaignModal({
           <div className="space-y-1.5">
             <Label>Responsável pelo envio</Label>
             <Select value={ownerUserId} onValueChange={setOwnerUserId}>
-              <SelectTrigger>
+              <SelectTrigger className="max-sm:h-11">
                 <SelectValue placeholder="Quem vai enviar as mensagens?" />
               </SelectTrigger>
               <SelectContent>
@@ -114,10 +116,11 @@ export function NewCampaignModal({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" className="max-sm:h-11" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
           <Button
+            className="max-sm:h-11"
             onClick={() => createMutation.mutate()}
             disabled={!canCreate || createMutation.isPending}
           >

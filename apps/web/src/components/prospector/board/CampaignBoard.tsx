@@ -33,8 +33,9 @@ export function CampaignBoard({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[90vh] w-[92vw] max-w-none flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b border-border px-4 py-3">
+      {/* Celular: tela cheia (sem as margens do "92vw × 90vh"); a partir de md segue o board de sempre */}
+      <DialogContent className="flex h-dvh w-screen max-w-none flex-col gap-0 overflow-hidden p-0 max-md:rounded-none max-md:border-0 md:h-[90vh] md:w-[92vw]">
+        <DialogHeader className="border-b border-border px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] pr-12 md:pt-3">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Bot className="h-4 w-4 text-primary" />
             {campaign?.name ?? "Campanha"}
@@ -54,7 +55,8 @@ export function CampaignBoard({
 
         {campaign ? (
           <Tabs defaultValue={initialTab ?? "fluxo"} className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="mx-4 mt-3 w-fit shrink-0">
+            {/* As quatro abas não cabem em 390px: a faixa rola pro lado em vez de cortar */}
+            <TabsList className="no-scrollbar mx-4 mt-3 w-fit max-w-[calc(100%-2rem)] shrink-0 justify-start overflow-x-auto">
               <TabsTrigger value="fluxo">Fluxo de mensagens</TabsTrigger>
               <TabsTrigger value="execucao">Execução & agenda</TabsTrigger>
               <TabsTrigger value="ia">IA & respostas</TabsTrigger>

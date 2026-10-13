@@ -18,32 +18,41 @@ export function LeadModal() {
   return (
     <>
     <Sheet open={!!lead} onOpenChange={(v) => !v && close()}>
-      <SheetContent className="w-full sm:max-w-xl overflow-y-auto p-0">
+      {/* No celular ocupa a tela toda (dvh + áreas seguras do iPhone); a partir de sm vira o painel lateral */}
+      <SheetContent
+        className="h-dvh w-full overflow-y-auto overscroll-contain p-0 pb-[env(safe-area-inset-bottom)] sm:max-w-xl"
+        // No toque o foco automático cairia no botão de fechar e deixaria um anel no X; no desktop segue o padrão
+        onOpenAutoFocus={(e) => {
+          if (window.matchMedia("(pointer: coarse)").matches) e.preventDefault();
+        }}
+      >
         {lead && (
           <>
-            <SheetHeader className="px-6 pt-6 pb-4 border-b border-border">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <SheetTitle className="text-xl">{lead.companyName}</SheetTitle>
-                  <SheetDescription className="flex items-center gap-2 mt-1">
+            <SheetHeader className="border-b border-border px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] text-left sm:px-6 sm:pt-6">
+              {/* pr-8 deixa o espaço do botão de fechar (fixo no canto) */}
+              <div className="flex items-start justify-between gap-3 pr-8">
+                <div className="min-w-0">
+                  <SheetTitle className="break-words text-lg sm:text-xl">{lead.companyName}</SheetTitle>
+                  <SheetDescription className="mt-1 flex items-center gap-2">
                     {lead.category} • {lead.city}
                   </SheetDescription>
                 </div>
-                <StatusBadge status={lead.status} />
+                <StatusBadge status={lead.status} className="shrink-0" />
               </div>
-              <div className="flex flex-wrap gap-2 mt-3">
+              {/* Celular: as ações rolam na horizontal numa linha só, em vez de quebrar em duas */}
+              <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&>button]:h-10 [&>button]:shrink-0 sm:[&>button]:h-8">
                 <Button size="sm" onClick={() => setEditing(true)}><Pencil className="h-3.5 w-3.5" /> Editar</Button>
                 <Button size="sm" variant="secondary"><Phone className="h-3.5 w-3.5" /> Ligar</Button>
                 <Button size="sm" variant="outline">Adicionar nota</Button>
                 <Button size="sm" variant="outline">Próximo follow-up</Button>
               </div>
             </SheetHeader>
-            <Tabs defaultValue="empresa" className="px-6 pt-4">
-              <TabsList className="w-full">
-                <TabsTrigger value="empresa" className="flex-1">Empresa</TabsTrigger>
-                <TabsTrigger value="instagram" className="flex-1">Instagram</TabsTrigger>
-                <TabsTrigger value="comercial" className="flex-1">Comercial</TabsTrigger>
-                <TabsTrigger value="timeline" className="flex-1">Timeline</TabsTrigger>
+            <Tabs defaultValue="empresa" className="px-4 pt-4 sm:px-6">
+              <TabsList className="grid h-10 w-full grid-cols-4 sm:h-9">
+                <TabsTrigger value="empresa" className="px-1 text-[13px] sm:px-3 sm:text-sm">Empresa</TabsTrigger>
+                <TabsTrigger value="instagram" className="px-1 text-[13px] sm:px-3 sm:text-sm">Instagram</TabsTrigger>
+                <TabsTrigger value="comercial" className="px-1 text-[13px] sm:px-3 sm:text-sm">Comercial</TabsTrigger>
+                <TabsTrigger value="timeline" className="px-1 text-[13px] sm:px-3 sm:text-sm">Timeline</TabsTrigger>
               </TabsList>
 
               <TabsContent value="empresa" className="space-y-3 pb-6">

@@ -137,6 +137,14 @@
   -webkit-backdrop-filter: blur(12px);
 }
 
+/* Faixas roláveis na horizontal (abas, chips de filtro): rola com o dedo, sem a barra aparecendo */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @utility glow-primary {
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--primary) 20%, transparent),

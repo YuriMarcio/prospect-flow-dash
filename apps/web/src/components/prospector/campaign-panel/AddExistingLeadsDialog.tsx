@@ -85,7 +85,7 @@ export function AddExistingLeadsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[88vh] flex-col gap-4 sm:max-w-xl">
+      <DialogContent mobileSheet className="flex max-h-[88vh] flex-col gap-4 sm:max-w-xl max-sm:h-[88dvh]">
         <DialogHeader>
           <DialogTitle>Adicionar leads do Kanban geral</DialogTitle>
           <DialogDescription>
@@ -96,10 +96,10 @@ export function AddExistingLeadsDialog({
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-40 flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome ou número…" className="h-9 pl-8" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome ou número…" className="h-11 pl-8 md:h-9" />
           </div>
           <Select value={city} onValueChange={setCity}>
-            <SelectTrigger className="h-9 w-48">
+            <SelectTrigger className="h-11 w-full md:h-9 md:w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -120,14 +120,14 @@ export function AddExistingLeadsDialog({
             </p>
           ) : (
             <>
-              <label className="sticky top-0 flex cursor-pointer items-center gap-3 border-b border-border bg-muted/60 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur">
+              <label className="sticky top-0 flex cursor-pointer items-center gap-3 border-b border-border bg-muted/60 px-4 py-3 text-xs font-medium text-muted-foreground backdrop-blur md:py-2">
                 <Checkbox checked={allVisibleSelected} onCheckedChange={(checked) => toggleAllVisible(checked === true)} />
                 Marcar todos os {visible.length} da lista
               </label>
               {visible.map((lead) => (
                 <label
                   key={lead.id}
-                  className="flex cursor-pointer items-center gap-3 border-b border-border/60 px-4 py-2.5 last:border-b-0 hover:bg-accent/40"
+                  className="flex cursor-pointer items-center gap-3 border-b border-border/60 px-4 py-3 last:border-b-0 hover:bg-accent/40 md:py-2.5"
                 >
                   <Checkbox checked={selected.has(lead.id)} onCheckedChange={(checked) => toggle(lead.id, checked === true)} />
                   <span className="min-w-0 flex-1">
@@ -144,10 +144,10 @@ export function AddExistingLeadsDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>
+          <Button variant="outline" className="max-sm:h-11" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>
             Cancelar
           </Button>
-          <Button onClick={() => mutation.mutate()} disabled={selected.size === 0 || mutation.isPending}>
+          <Button className="max-sm:h-11" onClick={() => mutation.mutate()} disabled={selected.size === 0 || mutation.isPending}>
             {mutation.isPending ? "Adicionando…" : `Adicionar ${selected.size || ""} à campanha`.replace("  ", " ")}
           </Button>
         </DialogFooter>

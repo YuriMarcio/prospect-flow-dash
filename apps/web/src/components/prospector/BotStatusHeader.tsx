@@ -72,25 +72,29 @@ export function BotStatusHeader({
   const endTime = formatTime(status?.sessionEndAt ?? null);
 
   return (
-    <div className="flex items-center justify-between gap-3 flex-wrap">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{campaignName}</h1>
-        <p className="text-sm text-muted-foreground">
-          {region ? `${region} · ` : ""}você escolhe quais leads o bot contata
+    <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
+      <div className="min-w-0">
+        <h1 className="truncate text-lg font-semibold tracking-tight md:text-2xl">{campaignName}</h1>
+        <p className="truncate text-xs text-muted-foreground md:text-sm">
+          {region}
+          {/* A frase de apoio só no desktop; no celular fica só o território */}
+          <span className="hidden md:inline">
+            {region ? " · " : ""}você escolhe quais leads o bot contata
+          </span>
         </p>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={handlePillClick}
           disabled={stopMutation.isPending}
           className={
             connected && isActive
-              ? "flex items-center gap-1.5 rounded-full border border-green-500/40 bg-green-500/10 px-3 py-1.5 text-xs font-medium text-green-600 transition disabled:opacity-50"
+              ? "flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-green-500/40 bg-green-500/10 px-3 text-xs font-medium text-green-600 transition disabled:opacity-50 md:h-auto md:py-1.5"
               : connected
-                ? "flex items-center gap-1.5 rounded-full border border-yellow-500/40 bg-yellow-500/10 px-3 py-1.5 text-xs font-medium text-yellow-600 transition disabled:opacity-50"
-                : "flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground transition disabled:opacity-50"
+                ? "flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-yellow-500/40 bg-yellow-500/10 px-3 text-xs font-medium text-yellow-600 transition disabled:opacity-50 md:h-auto md:py-1.5"
+                : "flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-muted px-3 text-xs font-medium text-muted-foreground transition disabled:opacity-50 md:h-auto md:py-1.5"
           }
         >
           <span
@@ -102,18 +106,27 @@ export function BotStatusHeader({
                   : "h-2 w-2 rounded-full bg-muted-foreground"
             }
           />
-          {connected && isActive
-            ? endTime
-              ? `Bot ativo até ${endTime}`
-              : "Bot ativo"
-            : connected
-              ? "Bot pausado — iniciar"
-              : "Desconectado — conectar"}
+          {connected && isActive ? (
+            <>
+              <span className="md:hidden">{endTime ? `Ativo até ${endTime}` : "Ativo"}</span>
+              <span className="hidden md:inline">{endTime ? `Bot ativo até ${endTime}` : "Bot ativo"}</span>
+            </>
+          ) : connected ? (
+            <>
+              <span className="md:hidden">Pausado</span>
+              <span className="hidden md:inline">Bot pausado — iniciar</span>
+            </>
+          ) : (
+            <>
+              <span className="md:hidden">Conectar WhatsApp</span>
+              <span className="hidden md:inline">Desconectado — conectar</span>
+            </>
+          )}
         </button>
 
         {status?.activeMessage && (
           <span
-            className="flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground max-w-[220px]"
+            className="hidden max-w-[220px] items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground md:flex"
             title={
               status.activeMessage.bot_message_blocks.find((b) => b.type === "text")?.content ??
               status.activeMessage.title
@@ -126,7 +139,7 @@ export function BotStatusHeader({
         )}
 
         {connected && !isActive && (
-          <Button onClick={() => onConfigure("execucao")}>
+          <Button className="max-md:h-10 max-md:flex-1" onClick={() => onConfigure("execucao")}>
             <Play className="h-4 w-4" />
             Iniciar bot
           </Button>
@@ -135,6 +148,7 @@ export function BotStatusHeader({
         {connected && isActive && (
           <Button
             variant="outline"
+            className="max-md:h-10 max-md:flex-1"
             onClick={() => stopMutation.mutate()}
             disabled={stopMutation.isPending}
           >
@@ -143,9 +157,14 @@ export function BotStatusHeader({
           </Button>
         )}
 
-        <Button variant="outline" onClick={() => onConfigure()}>
+        <Button
+          variant="outline"
+          className="max-md:h-10 max-md:w-10 max-md:shrink-0 max-md:px-0 max-md:ml-auto"
+          onClick={() => onConfigure()}
+          aria-label="Configurar campanha"
+        >
           <Settings2 className="h-4 w-4" />
-          Configurar campanha
+          <span className="max-md:hidden">Configurar campanha</span>
         </Button>
 
         <AlertDialog>
@@ -153,7 +172,8 @@ export function BotStatusHeader({
             <Button
               variant="outline"
               size="icon"
-              className="text-destructive hover:text-destructive"
+              className="shrink-0 text-destructive hover:text-destructive max-md:h-10 max-md:w-10"
+              aria-label="Excluir campanha"
             >
               <Trash2 className="h-4 w-4" />
             </Button>

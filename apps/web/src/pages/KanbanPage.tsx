@@ -11,6 +11,7 @@ import {
   closestCorners,
 } from "@dnd-kit/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ClientOnly } from "@tanstack/react-router";
 import {
   CalendarClock,
   Filter,
@@ -18,6 +19,7 @@ import {
   Mail,
   MapPin,
   MessageCircle,
+  MoreHorizontal,
   Plus,
   Trash2,
   X,
@@ -28,6 +30,7 @@ import { useFiltersStore } from "@/store/filters";
 import { useNotificationsStore } from "@/store/notifications";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { LeadCard, type BotDispatchInfo } from "@/components/LeadCard";
+import { MobileKanbanBoard } from "@/components/MobileKanbanBoard";
 import { BotStatusHeader } from "@/components/prospector/BotStatusHeader";
 import { CampaignMetricsPanel } from "@/components/prospector/CampaignMetricsPanel";
 import { ConnectQrDialog } from "@/components/prospector/ConnectQrDialog";
@@ -38,6 +41,7 @@ import { CampaignLeadsPanel } from "@/components/prospector/campaign-panel/Campa
 import { LeadFormDialog } from "@/components/prospector/campaign-panel/LeadFormDialog";
 import { NewCampaignModal } from "@/components/prospector/NewCampaignModal";
 import { useLeadsSync } from "@/hooks/use-leads-sync";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,8 +63,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const snapLeftToCursor: Modifier = ({ draggingNodeRect, transform }) => {
   if (!draggingNodeRect) return transform;
@@ -114,6 +123,8 @@ export function KanbanPage() {
   const [configBoard, setConfigBoard] = useState<{ open: boolean; tab?: string }>({ open: false });
   const [boardView, setBoardView] = useState<string>("geral");
   const [newCampaignOpen, setNewCampaignOpen] = useState(false);
+  const [dedupConfirmOpen, setDedupConfirmOpen] = useState(false);
+  const isMobile = useIsMobile();
   // Cadastro manual no Kanban geral: guarda a coluna onde o "+" foi clicado
   const [newLeadColumnId, setNewLeadColumnId] = useState<string | null>(null);
 
@@ -268,24 +279,18 @@ export function KanbanPage() {
     setPendingMove(null);
   }
 
-  const onDragStart = (e: DragStartEvent) => setActiveId(e.active.id as string);
-
-  const onDragEnd = (e: DragEndEvent) => {
-    setActiveId(null);
-    const overId = e.over?.id as string | undefined;
-    const id = e.active.id as string;
-    if (!overId || !columns.some((c) => c.id === overId)) return;
-
+  /** Move o lead de coluna e dispara os efeitos do pipeline (reunião, follow-up). Vale pro drag e pro botão "Mover". */
+  const requestMove = (id: string, columnId: string) => {
     const lead = leads.find((l) => l.id === id);
     if (!lead) return;
 
-    const destColumn = columns.find((c) => c.id === overId);
+    const destColumn = columns.find((c) => c.id === columnId);
     const destTitle = (destColumn?.title ?? "").toLowerCase();
 
-    moveLead(id, overId);
+    moveLead(id, columnId);
 
     const requiresMeeting = destTitle.includes("negocia") && !lead.meetingAt;
-    openPendingDialog({ leadId: id, columnId: overId, lead, requiresMeeting });
+    openPendingDialog({ leadId: id, columnId, lead, requiresMeeting });
 
     if (destTitle.includes("prospec")) {
       scheduleFollowUp(lead.id, lead.companyName, 48);
@@ -301,6 +306,15 @@ export function KanbanPage() {
     }
   };
 
+  const onDragStart = (e: DragStartEvent) => setActiveId(e.active.id as string);
+
+  const onDragEnd = (e: DragEndEvent) => {
+    setActiveId(null);
+    const overId = e.over?.id as string | undefined;
+    if (!overId || !columns.some((c) => c.id === overId)) return;
+    requestMove(e.active.id as string, overId);
+  };
+
   const onDragCancel = () => setActiveId(null);
 
   const sorted = [...columns].sort((a, b) => a.order - b.order);
@@ -308,14 +322,20 @@ export function KanbanPage() {
 
   const canConfirmMeeting = !pendingMove?.requiresMeeting || Boolean(meetingDate);
 
+  function addColumnPrompt() {
+    const t = prompt("Nome da nova coluna");
+    if (t) addColumn(t);
+  }
+
   return (
-    <div className="flex flex-col h-screen overflow-hidden p-6 gap-4 animate-fade-in">
+    // No celular a página rola inteira (o <main> do layout); no desktop o board ocupa a altura e rola por dentro.
+    <div className="flex flex-col gap-3 p-4 animate-fade-in md:h-full md:gap-4 md:overflow-hidden md:p-6">
       {/* Abas: Kanban geral (fixa) + uma por campanha de prospecção + Nova campanha */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-1 w-fit">
+      <div className="no-scrollbar -mx-4 flex items-center gap-2 overflow-x-auto px-4 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
+        <div className="flex w-max shrink-0 items-center gap-1 rounded-lg border border-border bg-muted/40 p-1">
           <button
             onClick={() => setBoardView("geral")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`shrink-0 whitespace-nowrap px-3 py-2 rounded-md text-xs font-medium transition-colors md:py-1.5 ${
               boardView === "geral"
                 ? "bg-background shadow-sm text-foreground"
                 : "text-muted-foreground hover:text-foreground"
@@ -327,7 +347,7 @@ export function KanbanPage() {
             <button
               key={campaign.id}
               onClick={() => setBoardView(campaign.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-md text-xs font-medium transition-colors md:py-1.5 ${
                 boardView === campaign.id
                   ? "bg-background shadow-sm text-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -343,14 +363,20 @@ export function KanbanPage() {
           ))}
         </div>
 
-        <Button variant="outline" size="sm" onClick={() => setNewCampaignOpen(true)}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0 max-md:h-10 max-md:w-10 max-md:px-0"
+          onClick={() => setNewCampaignOpen(true)}
+          aria-label="Nova campanha"
+        >
           <Plus className="h-3.5 w-3.5" />
-          Nova campanha
+          <span className="max-md:hidden">Nova campanha</span>
         </Button>
       </div>
 
       {activeCampaign ? (
-        <div className="flex flex-col gap-4 flex-1 min-h-0">
+        <div className="flex flex-col gap-3 md:min-h-0 md:flex-1 md:gap-4">
           <BotStatusHeader
             campaignId={activeCampaign.id}
             campaignName={activeCampaign.name}
@@ -374,70 +400,77 @@ export function KanbanPage() {
       ) : (
         <>
           {/* Header */}
-          <div className="flex items-start justify-between flex-wrap gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">Pipeline comercial</h1>
-              <p className="text-sm text-muted-foreground">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold tracking-tight md:text-2xl">
+                <span className="md:hidden">Pipeline</span>
+                <span className="hidden md:inline">Pipeline comercial</span>
+              </h1>
+              <p className="hidden text-sm text-muted-foreground md:block">
                 Arraste leads entre colunas · dados compartilhados entre todos
               </p>
               {leadsQuery.isError && (
-                <p className="text-sm text-destructive mt-1">
+                <p className="mt-1 text-xs text-destructive md:text-sm">
                   Não foi possível carregar os leads da API.
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="outline" size="sm" disabled={dedupMutation.isPending}>
-                    <Trash2 className="h-4 w-4" />
-                    {dedupMutation.isPending ? "Removendo…" : "Remover duplicados"}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Remover leads duplicados?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Leads com mesmo Instagram, WhatsApp ou CNPJ serão removidos do banco. Essa
-                      ação não pode ser desfeita.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => dedupMutation.mutate()}>
-                      Confirmar
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-
+            <div className="flex shrink-0 items-center gap-2">
               <Button
                 variant="outline"
-                onClick={() => {
-                  const t = prompt("Nome da nova coluna");
-                  if (t) addColumn(t);
-                }}
+                size="sm"
+                className="hidden md:inline-flex"
+                disabled={dedupMutation.isPending}
+                onClick={() => setDedupConfirmOpen(true)}
               >
+                <Trash2 className="h-4 w-4" />
+                {dedupMutation.isPending ? "Removendo…" : "Remover duplicados"}
+              </Button>
+
+              <Button variant="outline" className="hidden md:inline-flex" onClick={addColumnPrompt}>
                 <Plus className="h-4 w-4" />
                 Nova coluna
               </Button>
 
-              <Button onClick={() => setNewLeadColumnId(sorted[0]?.id ?? "col-1")}>
+              <Button className="max-md:h-10" onClick={() => setNewLeadColumnId(sorted[0]?.id ?? "col-1")}>
                 <Plus className="h-4 w-4" />
                 Novo lead
               </Button>
+
+              {/* Celular: as ações secundárias ficam num menu pra não ocupar a tela */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-10 w-10 md:hidden" aria-label="Mais ações">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" collisionPadding={12}>
+                  <DropdownMenuItem onClick={addColumnPrompt}>
+                    <Plus />
+                    Nova coluna
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={dedupMutation.isPending}
+                    onClick={() => setDedupConfirmOpen(true)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 />
+                    Remover duplicados
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
           {/* Filter bar */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 md:flex-wrap">
+            <div className="hidden items-center gap-1.5 text-xs text-muted-foreground md:flex">
               <Filter className="h-3.5 w-3.5" />
               Filtrar por:
             </div>
 
             <Select value={filterCity} onValueChange={setFilterCity}>
-              <SelectTrigger className="h-8 text-xs w-44 gap-1">
+              <SelectTrigger className="h-10 min-w-0 flex-1 gap-1 text-xs md:h-8 md:w-44 md:flex-none">
                 <MapPin className="h-3 w-3 text-muted-foreground" />
                 <SelectValue placeholder="Cidade" />
               </SelectTrigger>
@@ -452,7 +485,7 @@ export function KanbanPage() {
             </Select>
 
             <Select value={filterDays} onValueChange={setFilterDays}>
-              <SelectTrigger className="h-8 text-xs w-40">
+              <SelectTrigger className="h-10 min-w-0 flex-1 text-xs md:h-8 md:w-40 md:flex-none">
                 <SelectValue placeholder="Data de adição" />
               </SelectTrigger>
               <SelectContent>
@@ -470,64 +503,90 @@ export function KanbanPage() {
                   setFilterCity("all");
                   setFilterDays("all");
                 }}
-                className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-xs text-destructive border border-destructive/30 hover:bg-destructive/10 transition-colors"
+                aria-label="Limpar filtros"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1 rounded-md border border-destructive/30 text-xs text-destructive transition-colors hover:bg-destructive/10 md:h-8 md:w-auto md:px-2.5"
               >
-                <X className="h-3 w-3" />
-                Limpar filtros
+                <X className="h-3.5 w-3.5 md:h-3 md:w-3" />
+                <span className="hidden md:inline">Limpar filtros</span>
               </button>
             )}
 
-            <span className="ml-auto text-xs text-muted-foreground">
+            <span className="ml-auto hidden text-xs text-muted-foreground md:inline">
               {filtered.length} lead{filtered.length !== 1 ? "s" : ""}
               {hasActiveFilters ? " filtrado" : ""}
               {filtered.length !== 1 && hasActiveFilters ? "s" : ""}
             </span>
           </div>
 
-          {/* Board */}
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCorners}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-            onDragCancel={onDragCancel}
-          >
-            <div
-              className={`flex gap-3 overflow-x-auto pb-4 flex-1 min-h-0 ${activeId ? "cursor-grabbing" : ""}`}
-            >
-              {sorted.map((col) => (
-                <KanbanColumn
-                  key={col.id}
-                  column={col}
-                  leads={filtered.filter((l) => l.columnId === col.id)}
-                  botDispatchByLeadId={botDispatchByLeadId}
-                  onAddLead={setNewLeadColumnId}
-                />
-              ))}
-              <button
-                onClick={() => {
-                  const t = prompt("Nome da nova coluna");
-                  if (t) addColumn(t);
-                }}
-                className="w-64 shrink-0 h-28 rounded-xl border border-dashed border-border text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors self-start mt-0"
+          {/* Board: só no cliente — o servidor não sabe se a tela é de celular e mostraria o layout errado por um instante */}
+          <ClientOnly fallback={<div className="h-64 animate-pulse rounded-xl bg-muted/40 md:flex-1" />}>
+            {isMobile ? (
+              <MobileKanbanBoard
+                columns={sorted}
+                leads={filtered}
+                botDispatchByLeadId={botDispatchByLeadId}
+                onAddLead={setNewLeadColumnId}
+                onMoveLead={requestMove}
+              />
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCorners}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onDragCancel={onDragCancel}
               >
-                + Adicionar coluna
-              </button>
-            </div>
-
-            <DragOverlay
-              modifiers={[snapLeftToCursor]}
-              dropAnimation={{ duration: 150, easing: "ease-out" }}
-            >
-              {activeLead ? (
-                <div className="w-64 opacity-95 shadow-2xl ring-2 ring-primary/30 rounded-lg">
-                  <LeadCard lead={activeLead} overlay />
+                <div
+                  className={`flex gap-3 overflow-x-auto pb-4 flex-1 min-h-0 ${activeId ? "cursor-grabbing" : ""}`}
+                >
+                  {sorted.map((col) => (
+                    <KanbanColumn
+                      key={col.id}
+                      column={col}
+                      leads={filtered.filter((l) => l.columnId === col.id)}
+                      botDispatchByLeadId={botDispatchByLeadId}
+                      onAddLead={setNewLeadColumnId}
+                    />
+                  ))}
+                  <button
+                    onClick={addColumnPrompt}
+                    className="w-64 shrink-0 h-28 rounded-xl border border-dashed border-border text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors self-start mt-0"
+                  >
+                    + Adicionar coluna
+                  </button>
                 </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
+
+                <DragOverlay
+                  modifiers={[snapLeftToCursor]}
+                  dropAnimation={{ duration: 150, easing: "ease-out" }}
+                >
+                  {activeLead ? (
+                    <div className="w-64 opacity-95 shadow-2xl ring-2 ring-primary/30 rounded-lg">
+                      <LeadCard lead={activeLead} overlay />
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
+            )}
+          </ClientOnly>
         </>
       )}
+
+      <AlertDialog open={dedupConfirmOpen} onOpenChange={setDedupConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover leads duplicados?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Leads com mesmo Instagram, WhatsApp ou CNPJ serão removidos do banco. Essa ação não
+              pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => dedupMutation.mutate()}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Cadastro manual de lead no Kanban geral (o "+" da coluna ou o botão do topo) */}
       <LeadFormDialog
@@ -543,7 +602,7 @@ export function KanbanPage() {
           if (!open) closePendingDialog();
         }}
       >
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent mobileSheet className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-base">
               {pendingMove?.requiresMeeting ? "Agendar reunião" : "Canal de prospecção"}
@@ -626,7 +685,7 @@ export function KanbanPage() {
                     type="date"
                     value={meetingDate}
                     onChange={(e) => setMeetingDate(e.target.value)}
-                    className="h-8 text-xs"
+                    className="h-10 text-base md:h-8 md:text-xs"
                   />
                 </div>
                 <div className="space-y-1">
@@ -638,7 +697,7 @@ export function KanbanPage() {
                     type="time"
                     value={meetingTime}
                     onChange={(e) => setMeetingTime(e.target.value)}
-                    className="h-8 text-xs"
+                    className="h-10 text-base md:h-8 md:text-xs"
                   />
                 </div>
               </div>
@@ -651,7 +710,7 @@ export function KanbanPage() {
                   placeholder="ex: Apresentar proposta comercial"
                   value={meetingNotes}
                   onChange={(e) => setMeetingNotes(e.target.value)}
-                  className="h-8 text-xs"
+                  className="h-10 text-base md:h-8 md:text-xs"
                 />
               </div>
             </div>
@@ -660,7 +719,7 @@ export function KanbanPage() {
           <div className="flex gap-2 pt-1">
             <button
               onClick={closePendingDialog}
-              className="flex-1 text-xs text-muted-foreground hover:text-foreground transition-colors text-center py-2"
+              className="flex-1 text-sm text-muted-foreground hover:text-foreground transition-colors text-center py-3 md:text-xs md:py-2"
             >
               Pular
             </button>
@@ -668,7 +727,7 @@ export function KanbanPage() {
               onClick={confirmMove}
               disabled={!canConfirmMeeting}
               size="sm"
-              className="flex-1"
+              className="flex-1 max-md:h-11 max-md:text-sm"
             >
               Confirmar
             </Button>

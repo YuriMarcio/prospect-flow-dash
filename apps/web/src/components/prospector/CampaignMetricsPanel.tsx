@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Flame } from "lucide-react";
+import { AlertTriangle, ChevronDown, Flame } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { getCampaignMetrics, type CampaignStatus } from "@/lib/prospector";
 import { INTENT_LABELS, type Intent } from "@/lib/flows";
 
@@ -35,9 +37,9 @@ function StatTile({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="px-4 py-3">
+    <div className="px-3 py-2.5 md:px-4 md:py-3">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-xl font-semibold">
+      <p className="mt-0.5 text-lg font-semibold md:text-xl">
         {value}
         {valueSuffix && (
           <span className="ml-1 text-sm font-normal text-muted-foreground">{valueSuffix}</span>
@@ -74,6 +76,8 @@ export function CampaignMetricsPanel({
     refetchInterval: 15_000,
   });
   const metrics = metricsQuery.data;
+  // Celular: começa recolhido, só com o resumo (disparos de hoje + taxa de resposta)
+  const [expanded, setExpanded] = useState(false);
 
   // ── Tile 1: progresso de hoje + previsão ──────────────────────────────────
   const todayCount = status?.todayCount ?? 0;
@@ -100,98 +104,137 @@ export function CampaignMetricsPanel({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-4 lg:divide-y-0">
-        <StatTile
-          label="Disparos de hoje"
-          value={todayCount}
-          valueSuffix={`de ${todayLimit}`}
-          sub={todaySub}
-          accent={finishLate && queueRemaining > 0 ? "amber" : undefined}
-        >
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left md:hidden"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm">
+            <b className="tabular-nums">{todayCount}</b>
+            <span className="text-muted-foreground"> de {todayLimit} hoje · </span>
+            <b className="tabular-nums">{total ? `${total.responseRate}%` : "—"}</b>
+            <span className="text-muted-foreground"> de resposta</span>
+          </p>
           <div
             className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-primary/15"
-            role="progressbar"
-            aria-valuenow={progress}
-            aria-valuemin={0}
-            aria-valuemax={100}
+            aria-hidden
           >
             <div
               className={`h-full rounded-full ${finishLate && queueRemaining > 0 ? "bg-amber-500" : "bg-primary"}`}
               style={{ width: `${progress}%` }}
             />
           </div>
-        </StatTile>
-
-        <StatTile
-          label="Taxa de resposta"
-          value={total ? `${total.responseRate}%` : "—"}
-          sub={
-            total && total.sent > 0
-              ? `${total.replied} resposta${total.replied === 1 ? "" : "s"} · ${total.sent} enviados (acumulado)`
-              : "nenhum envio ainda"
-          }
-        />
-
-        <StatTile
-          label="Tempo médio de resposta"
-          value={metrics?.avgResponseMs != null ? `~${formatDuration(metrics.avgResponseMs)}` : "—"}
-          sub="entre o envio e a resposta do lead"
-        />
-
-        <StatTile
-          label="Oportunidades quentes"
-          value={
-            <span className="inline-flex items-center gap-1.5">
-              {metrics?.hotLeads ?? "—"}
-              {(metrics?.hotLeads ?? 0) > 0 && <Flame className="h-4 w-4 text-primary" />}
-            </span>
-          }
-          sub={
-            total
-              ? `prontidão alta (IA) · ${total.inNegotiation} em negociação · ${total.followupsPending} follow-ups`
-              : "prontidão alta detectada pela IA"
-          }
-        />
-      </div>
-
-      {(intentEntries.length > 0 || (total?.failed ?? 0) > 0 || filterChips.length > 0) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border px-4 py-2.5">
-          {intentEntries.length > 0 && (
-            <>
-              <span className="text-[11px] text-muted-foreground">Intenções:</span>
-              {intentEntries.map(([intent, count]) => (
-                <span
-                  key={intent}
-                  className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground"
-                >
-                  {INTENT_LABELS[intent as Intent] ?? intent}{" "}
-                  <b className="tabular-nums">{count}</b>
-                </span>
-              ))}
-            </>
-          )}
-
-          {(total?.failed ?? 0) > 0 && (
-            <span className="text-[11px] text-muted-foreground">
-              Falhas de envio: <b className="text-foreground tabular-nums">{total!.failed}</b>
-            </span>
-          )}
-
-          {filterChips.length > 0 && (
-            <span className="ml-auto flex flex-wrap items-center gap-1">
-              <span className="text-[11px] text-muted-foreground">Filtros:</span>
-              {filterChips.map((chip) => (
-                <span
-                  key={chip}
-                  className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
-                >
-                  {chip}
-                </span>
-              ))}
-            </span>
-          )}
         </div>
-      )}
+        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+          {expanded ? "Menos" : "Métricas"}
+          <ChevronDown className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} />
+        </span>
+      </button>
+
+      <div
+        className={cn(
+          "border-t border-border md:border-t-0",
+          expanded ? "block" : "hidden",
+          "md:block",
+        )}
+      >
+        <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-4 lg:divide-y-0">
+          <StatTile
+            label="Disparos de hoje"
+            value={todayCount}
+            valueSuffix={`de ${todayLimit}`}
+            sub={todaySub}
+            accent={finishLate && queueRemaining > 0 ? "amber" : undefined}
+          >
+            <div
+              className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-primary/15"
+              role="progressbar"
+              aria-valuenow={progress}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div
+                className={`h-full rounded-full ${finishLate && queueRemaining > 0 ? "bg-amber-500" : "bg-primary"}`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </StatTile>
+
+          <StatTile
+            label="Taxa de resposta"
+            value={total ? `${total.responseRate}%` : "—"}
+            sub={
+              total && total.sent > 0
+                ? `${total.replied} resposta${total.replied === 1 ? "" : "s"} · ${total.sent} enviados (acumulado)`
+                : "nenhum envio ainda"
+            }
+          />
+
+          <StatTile
+            label="Tempo médio de resposta"
+            value={
+              metrics?.avgResponseMs != null ? `~${formatDuration(metrics.avgResponseMs)}` : "—"
+            }
+            sub="entre o envio e a resposta do lead"
+          />
+
+          <StatTile
+            label="Oportunidades quentes"
+            value={
+              <span className="inline-flex items-center gap-1.5">
+                {metrics?.hotLeads ?? "—"}
+                {(metrics?.hotLeads ?? 0) > 0 && <Flame className="h-4 w-4 text-primary" />}
+              </span>
+            }
+            sub={
+              total
+                ? `prontidão alta (IA) · ${total.inNegotiation} em negociação · ${total.followupsPending} follow-ups`
+                : "prontidão alta detectada pela IA"
+            }
+          />
+        </div>
+
+        {(intentEntries.length > 0 || (total?.failed ?? 0) > 0 || filterChips.length > 0) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border px-4 py-2.5">
+            {intentEntries.length > 0 && (
+              <>
+                <span className="text-[11px] text-muted-foreground">Intenções:</span>
+                {intentEntries.map(([intent, count]) => (
+                  <span
+                    key={intent}
+                    className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground"
+                  >
+                    {INTENT_LABELS[intent as Intent] ?? intent}{" "}
+                    <b className="tabular-nums">{count}</b>
+                  </span>
+                ))}
+              </>
+            )}
+
+            {(total?.failed ?? 0) > 0 && (
+              <span className="text-[11px] text-muted-foreground">
+                Falhas de envio: <b className="text-foreground tabular-nums">{total!.failed}</b>
+              </span>
+            )}
+
+            {filterChips.length > 0 && (
+              <span className="ml-auto flex flex-wrap items-center gap-1">
+                <span className="text-[11px] text-muted-foreground">Filtros:</span>
+                {filterChips.map((chip) => (
+                  <span
+                    key={chip}
+                    className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
+                  >
+                    {chip}
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

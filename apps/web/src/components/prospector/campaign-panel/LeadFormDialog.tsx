@@ -31,6 +31,9 @@ const leadSchema = z.object({
 
 type LeadFormData = z.infer<typeof leadSchema>;
 
+/** Campos mais altos no celular (alvo de toque); no desktop mantém os 36px de sempre. */
+const INPUT_TOUCH = "max-sm:h-11";
+
 // normalizeLead preenche "Sem cidade"/"Sem categoria" quando o campo está vazio — no formulário isso é vazio.
 const clean = (value?: string) => (value && !/^Sem (cidade|categoria)$/.test(value) ? value : "");
 
@@ -129,7 +132,7 @@ export function LeadFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent mobileSheet className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Editar lead" : "Novo lead"}</DialogTitle>
           <DialogDescription>
@@ -143,21 +146,21 @@ export function LeadFormDialog({
 
         <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-4 pt-1">
           <Field label="Nome do estabelecimento *" error={errors.name?.message}>
-            <Input autoFocus placeholder="Ex.: Lanchonete do Zé" {...form.register("name")} />
+            <Input autoFocus className={INPUT_TOUCH} placeholder="Ex.: Lanchonete do Zé" {...form.register("name")} />
           </Field>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="WhatsApp" error={errors.whatsapp?.message}>
-              <Input inputMode="tel" placeholder="(21) 99999-0000" {...form.register("whatsapp")} />
+              <Input inputMode="tel" className={INPUT_TOUCH} placeholder="(21) 99999-0000" {...form.register("whatsapp")} />
             </Field>
             <Field label="Instagram" error={errors.instagram?.message}>
-              <Input placeholder="@perfil ou link" {...form.register("instagram")} />
+              <Input className={INPUT_TOUCH} autoCapitalize="none" autoCorrect="off" placeholder="@perfil ou link" {...form.register("instagram")} />
             </Field>
             <Field label="Cidade / região" error={errors.city?.message}>
-              <Input placeholder="Ex.: Ilha do Governador" {...form.register("city")} />
+              <Input className={INPUT_TOUCH} placeholder="Ex.: Ilha do Governador" {...form.register("city")} />
             </Field>
             <Field label="Categoria" error={errors.category?.message}>
-              <Input placeholder="Ex.: Hamburgueria" {...form.register("category")} />
+              <Input className={INPUT_TOUCH} placeholder="Ex.: Hamburgueria" {...form.register("category")} />
             </Field>
           </div>
 
@@ -166,10 +169,10 @@ export function LeadFormDialog({
           </Field>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>
+            <Button type="button" variant="outline" className="max-sm:h-11" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button type="submit" className="max-sm:h-11" disabled={mutation.isPending}>
               {mutation.isPending ? "Salvando…" : isEdit ? "Salvar alterações" : "Cadastrar lead"}
             </Button>
           </DialogFooter>

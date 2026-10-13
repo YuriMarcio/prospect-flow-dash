@@ -12,6 +12,47 @@ import { useKanbanStore } from "@/store/kanban";
 
 const MAX_VISIBLE = 30;
 
+/** Renomear/excluir coluna — usado no cabeçalho da coluna (desktop) e no da etapa aberta (celular). */
+export function KanbanColumnMenu({
+  column,
+  triggerClassName = "h-6 w-6",
+}: {
+  column: KanbanColumnT;
+  triggerClassName?: string;
+}) {
+  const { deleteColumn, updateColumn } = useKanbanStore();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Opções da coluna ${column.title}`}
+          className={`grid place-items-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors ${triggerClassName}`}
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onClick={() => {
+            const t = prompt("Novo nome da coluna", column.title);
+            if (t) updateColumn(column.id, { title: t });
+          }}
+        >
+          Renomear
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => deleteColumn(column.id)}
+          className="text-destructive focus:text-destructive"
+        >
+          Excluir coluna
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function KanbanColumn({
   column,
   leads,
@@ -25,7 +66,6 @@ export function KanbanColumn({
   onAddLead?: (columnId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
-  const { deleteColumn, updateColumn } = useKanbanStore();
 
   const visible = leads.slice(0, MAX_VISIBLE);
   const hidden = leads.length - visible.length;
@@ -53,29 +93,7 @@ export function KanbanColumn({
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="h-6 w-6 grid place-items-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => {
-                  const t = prompt("Novo nome da coluna", column.title);
-                  if (t) updateColumn(column.id, { title: t });
-                }}
-              >
-                Renomear
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => deleteColumn(column.id)}
-                className="text-destructive focus:text-destructive"
-              >
-                Excluir coluna
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <KanbanColumnMenu column={column} />
         </div>
       </div>
 

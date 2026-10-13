@@ -4,6 +4,7 @@ import {
   CalendarClock,
   Check,
   Clock,
+  ArrowRightLeft,
   Instagram,
   Mail,
   MapPin,
@@ -13,9 +14,18 @@ import {
   Send,
   Star,
 } from "lucide-react";
-import type { Lead } from "@/types";
+import type { KanbanColumn, Lead } from "@/types";
 import { useLeadModalStore } from "@/store/leadModal";
 import { LeadStageProgress } from "@/components/LeadStageProgress";
+import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export interface BotDispatchInfo {
   status: "waiting" | "sending" | "sent" | "replied";
@@ -70,9 +80,143 @@ interface LeadCardProps {
   lead: Lead;
   overlay?: boolean;
   botDispatch?: BotDispatchInfo;
+  /**
+   * Versão para o celular: card enxuto, sem arrastar (o dedo precisa rolar a lista) e com o
+   * botão "Mover" no lugar do drag-and-drop. Exige `columns` e `onMove`.
+   */
+  compact?: boolean;
+  columns?: KanbanColumn[];
+  onMove?: (columnId: string) => void;
 }
 
-export function LeadCard({ lead, overlay = false, botDispatch }: LeadCardProps) {
+export function LeadCard({ compact = false, columns = [], onMove, ...props }: LeadCardProps) {
+  if (compact) return <LeadCardCompact lead={props.lead} botDispatch={props.botDispatch} columns={columns} onMove={onMove} />;
+  return <LeadCardDraggable {...props} />;
+}
+
+function LeadCardCompact({
+  lead,
+  botDispatch,
+  columns,
+  onMove,
+}: {
+  lead: Lead;
+  botDispatch?: BotDispatchInfo;
+  columns: KanbanColumn[];
+  onMove?: (columnId: string) => void;
+}) {
+  const open = useLeadModalStore((s) => s.open);
+
+  const needsMeeting = lead.status === "negociacao" && !lead.meetingAt;
+  const meetingLabel = lead.meetingAt ? formatMeetingDate(lead.meetingAt) : null;
+  const meetingIsPast = lead.meetingAt ? new Date(lead.meetingAt) < new Date() : false;
+  const isSending = botDispatch?.status === "sending";
+  const badge = botDispatch ? botDispatchBadge(botDispatch) : null;
+
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-xl border bg-card shadow-sm",
+        needsMeeting ? "border-yellow-500/50" : "border-border",
+        isSending && "border-primary bg-primary/5",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => open(lead.id)}
+        className="block w-full space-y-1.5 px-3.5 pb-2.5 pt-3 text-left transition-colors active:bg-accent/40"
+      >
+        <div className="flex items-start gap-2">
+          <h4 className={cn("min-w-0 flex-1 text-[15px] font-semibold leading-snug", isSending && "text-primary")}>
+            {lead.companyName}
+          </h4>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums">
+            <Star className="h-3 w-3 fill-warning text-warning" />
+            {lead.score}
+          </span>
+        </div>
+
+        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+          <span className="truncate">{lead.category}</span>
+          <span className="opacity-40">•</span>
+          <MapPin className="h-3 w-3 shrink-0" />
+          <span className="truncate">{lead.city}</span>
+        </p>
+
+        {(needsMeeting || meetingLabel || badge || lead.prospectingChannel) && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            {needsMeeting && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-2 py-1 text-[11px] font-medium text-yellow-600 dark:text-yellow-400">
+                <AlertTriangle className="h-3 w-3" />
+                Reunião não agendada
+              </span>
+            )}
+            {meetingLabel && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium",
+                  meetingIsPast ? "bg-muted/60 text-muted-foreground" : "border border-primary/20 bg-primary/10 text-primary",
+                )}
+              >
+                <CalendarClock className="h-3 w-3" />
+                {meetingLabel}
+              </span>
+            )}
+            {badge && (
+              <span className={cn("inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-1 text-[11px]", badge.cls)}>
+                {badge.icon}
+                {badge.label}
+              </span>
+            )}
+            {lead.prospectingChannel && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 text-[11px] font-medium">
+                {CHANNEL_ICON[lead.prospectingChannel]}
+                {CHANNEL_LABEL[lead.prospectingChannel]}
+              </span>
+            )}
+          </div>
+        )}
+      </button>
+
+      <div className="flex items-center justify-between gap-2 border-t border-border/60 px-3.5 py-1.5 text-xs text-muted-foreground">
+        <span className="min-w-0 truncate">
+          {lead.owner.split(" ")[0]} · {lead.lastInteraction}
+        </span>
+
+        {onMove && columns.length > 1 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="-mr-2 inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-accent active:bg-accent"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                Mover
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" collisionPadding={12} className="min-w-52">
+              <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Mover para…</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {columns.map((column) => (
+                <DropdownMenuItem
+                  key={column.id}
+                  disabled={column.id === lead.columnId}
+                  onClick={() => onMove(column.id)}
+                >
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: column.color }} />
+                  <span className="flex-1 truncate">{column.title}</span>
+                  {column.id === lead.columnId && <Check className="h-4 w-4 text-muted-foreground" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LeadCardDraggable({ lead, overlay = false, botDispatch }: LeadCardProps) {
   const open = useLeadModalStore((s) => s.open);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
