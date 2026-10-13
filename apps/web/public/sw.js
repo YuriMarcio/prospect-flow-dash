@@ -3,7 +3,7 @@
 // navegação (HTML) nem chamadas de API — os dados do CRM têm que ser sempre
 // frescos, e o app shell (HTML) precisa sempre buscar a versão atual pra não
 // prender o usuário numa build antiga depois de um deploy.
-const CACHE_NAME = "zapediu-assets-v1";
+const CACHE_NAME = "zapediu-assets-v2";
 const STATIC_ASSET_RE = /\.(?:js|css|woff2?|ttf|png|jpg|jpeg|svg|webp|ico)$/;
 
 self.addEventListener("install", () => {
