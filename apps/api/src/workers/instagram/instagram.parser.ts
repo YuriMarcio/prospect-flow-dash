@@ -141,14 +141,18 @@ export function parseInstagramBio(bioText: string): ParsedBioData {
 
   // 1. Buscar WhatsApp (Links wa.me ou api.whatsapp.com)
   const waMatch = bioText.match(/(?:wa\.me\/|api\.whatsapp\.com\/send\?phone=)([0-9]+)/);
+  // O número sai em E.164 (+55...), igual ao do enriquecimento — o disparador manda os dígitos
+  // direto pra Evolution API, que precisa do código do país. Sem isso, "98980011001" (DDD+número)
+  // seria lido como número de outro país e o lead cairia como "inválido no WhatsApp".
   if (waMatch) {
-    data.whatsapp = waMatch[1]; // Pega só os números
+    data.whatsapp = normalizeToE164(waMatch[1]) ?? waMatch[1];
   } else {
     // Fallback: Busca números de telefone formatados no meio do texto do Brasil (ex: 11 99999-9999)
     const phoneMatch = bioText.match(/(?:(?:\+|00)?(55)\s?)?(?:\(?([1-9][0-9])\)?\s?)?(?:((?:9\d|[2-9])\d{3})\-?(\d{4}))/);
     if (phoneMatch) {
       // Junta o DDD e o número achado
-      data.whatsapp = `${phoneMatch[2] || ""}${phoneMatch[3]}${phoneMatch[4]}`;
+      const digits = `${phoneMatch[2] || ""}${phoneMatch[3]}${phoneMatch[4]}`;
+      data.whatsapp = normalizeToE164(digits) ?? digits;
     }
   }
 

@@ -8,6 +8,10 @@ import { isCancelled, cleanup } from "../../lib/cancellation";
 
 const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
+// Teto de chamadas à Gecko por campanha: cada chamada gasta crédito, e uma API que repete a
+// mesma página (cursor que não avança) não pode virar laço infinito.
+const MAX_GECKO_REQUESTS = 100;
+
 async function log(
   campaignId: string,
   message: string,
@@ -113,10 +117,16 @@ export async function runIfoodScraping(
   let page = 1;
   let cursor: string | null = null;
   const seenUrls = new Set<string>();
+  let geckoRequests = 0;
 
   try {
     while (found < quantity) {
       if (isCancelled(campaignId)) break;
+
+      if (++geckoRequests > MAX_GECKO_REQUESTS) {
+        await log(campaignId, `Limite de ${MAX_GECKO_REQUESTS} chamadas à Gecko atingido. Encerrando busca.`, "warn");
+        break;
+      }
 
       const { merchants, nextCursor } = await fetchMerchantsPage(cleanZipCode, category, page, cursor);
 
@@ -125,6 +135,7 @@ export async function runIfoodScraping(
         break;
       }
 
+      let newOnPage = 0;
       for (const merchant of merchants) {
         if (found >= quantity) break;
         if (isCancelled(campaignId)) break;
@@ -133,8 +144,11 @@ export async function runIfoodScraping(
         const ifoodUrl = buildIfoodUrl(merchant);
         const address = merchant.address || merchant.fullAddress || merchant.location || "";
 
-        if (ifoodUrl && seenUrls.has(ifoodUrl)) continue;
-        if (ifoodUrl) seenUrls.add(ifoodUrl);
+        // Sem URL, o nome serve de chave — senão um item sem URL repetido nunca seria reconhecido como repetido.
+        const seenKey = ifoodUrl || name;
+        if (seenUrls.has(seenKey)) continue;
+        seenUrls.add(seenKey);
+        newOnPage++;
 
         processed++;
 
@@ -178,6 +192,12 @@ export async function runIfoodScraping(
         );
         await campaignsRepository.updateStats(campaignId, { processed, found });
         await delay(1200);
+      }
+
+      // Página que só trouxe restaurantes já vistos: a API não está avançando, continuar só gastaria créditos.
+      if (newOnPage === 0 && !isCancelled(campaignId)) {
+        await log(campaignId, `Página ${page} sem restaurantes novos. Encerrando busca na Gecko.`, "warn");
+        break;
       }
 
       if (!nextCursor) {
