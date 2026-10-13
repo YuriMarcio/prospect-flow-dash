@@ -9,7 +9,7 @@ import type { SerpClient } from "./serp.client";
 
 export type LogLevel = "info" | "warn" | "error";
 export type DiscoverySource = "instagram" | "maps";
-export type CompletionReason = "goal_reached" | "sources_exhausted" | "budget_exhausted";
+export type CompletionReason = "goal_reached" | "sources_exhausted" | "budget_exhausted" | "source_errors";
 /** merged = o negócio já tinha sido salvo por outra fonte nesta corrida; só completou os campos que faltavam. */
 export type SaveOutcome = "created" | "adopted" | "duplicate" | "merged";
 
@@ -121,6 +121,10 @@ export class DiscoveryRun {
   found = 0;
   /** Alguma fonte parou por limite (páginas/orçamento) e não por falta de resultado. */
   limited = false;
+  /** Buscas/consultas que falharam: a cobertura ficou incompleta, então não dá para dizer "fontes esgotadas". */
+  errors = 0;
+  /** O ScrapeCreators recusou chave/créditos: nesta corrida não se consulta mais bio. */
+  providerBlocked = false;
   readonly metrics: DiscoveryMetrics = { raw: 0, approved: 0, validated: 0, queued: 0, rejected: 0, duplicates: 0, created: 0, merged: 0 };
   readonly queued: QueuedCandidate[] = [];
 
@@ -139,6 +143,14 @@ export class DiscoveryRun {
   }
 
   private readonly registered: RegisteredLead[] = [];
+
+  /**
+   * Este negócio já foi salvo nesta corrida por outra fonte? Se sim, a cidade dele já foi
+   * confirmada lá (ex.: pelo endereço do Maps) e não vale gastar consulta de bio para confirmar.
+   */
+  knowsEstablishment(identity: LeadIdentity, source: DiscoverySource): boolean {
+    return this.findRegistered(identity, source) !== undefined;
+  }
 
   /** Lead desta corrida que é o mesmo negócio: mesmo @, mesmo place_id, mesmo telefone ou nome equivalente. */
   private findRegistered(identity: LeadIdentity, source: DiscoverySource): RegisteredLead | undefined {

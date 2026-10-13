@@ -20,7 +20,7 @@ create index if not exists leads_google_place_id_idx
 --   state             UF buscada (desambigua cidades homônimas, ex.: Santa Inês-MA × Santa Inês-BA)
 --   categories        segmentos escolhidos ({Hamburgueria,Pizzaria}); `category` guarda o resumo "Hamburgueria, Pizzaria"
 --   sources           fontes escolhidas: {instagram,maps}
---   completion_reason goal_reached | sources_exhausted | budget_exhausted
+--   completion_reason goal_reached | sources_exhausted | budget_exhausted | source_errors
 alter table public.campaigns
   add column if not exists state text,
   add column if not exists categories text[],

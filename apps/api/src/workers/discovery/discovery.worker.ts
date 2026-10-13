@@ -16,6 +16,7 @@ const REASON_TEXT: Record<CompletionReason, string> = {
   goal_reached: "meta atingida",
   sources_exhausted: "fontes esgotadas",
   budget_exhausted: "limite de buscas/orçamento atingido",
+  source_errors: "algumas buscas falharam; a cobertura ficou incompleta",
 };
 
 interface SegmentOutcome {
@@ -131,15 +132,24 @@ async function runSegment(
   return { run, budget };
 }
 
-/** Meta atingida em todos os segmentos; senão, limite se algum parou por ele; senão, fontes esgotadas. */
+/**
+ * Meta atingida em todos os segmentos; senão, falhas (cobertura incompleta, não dá para dizer que
+ * as fontes acabaram); senão, limite se algum parou por ele; senão, fontes esgotadas.
+ */
 function completionReason(outcomes: SegmentOutcome[]): CompletionReason {
   if (outcomes.every(({ run }) => run.goalReached)) return "goal_reached";
+  if (outcomes.some(({ run }) => !run.goalReached && run.errors > 0)) return "source_errors";
   if (outcomes.some(({ run }) => !run.goalReached && run.limited)) return "budget_exhausted";
   return "sources_exhausted";
 }
 
 /** Consulta a bio dos leads salvos sem WhatsApp, com o que sobrou do orçamento dos segmentos. */
 async function enrichLeftovers(campaignId: string, outcomes: SegmentOutcome[], deps: DiscoveryDeps): Promise<void> {
+  if (outcomes.some(({ run }) => run.providerBlocked)) {
+    await deps.log(campaignId, "Enriquecimento pulado: o ScrapeCreators recusou as consultas nesta captura.", "warn");
+    return;
+  }
+
   const available = outcomes.reduce((total, { budget }) => total + budget.remaining("enrich"), 0);
   if (available === 0) {
     await deps.log(campaignId, "Sem orçamento de consultas de bio para enriquecer os leads salvos.", "warn");

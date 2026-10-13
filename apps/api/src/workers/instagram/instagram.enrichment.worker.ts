@@ -1,7 +1,7 @@
 import axios from "axios";
 import { getSupabase } from "../../lib/supabase";
 import { extractUsernameFromUrl } from "./instagram.parser";
-import { profileToLeadFields, type ScrapeCreatorsProfile } from "./instagram.profile";
+import { profileToLeadFields, providerRejection, type ScrapeCreatorsProfile } from "./instagram.profile";
 import * as logsRepository from "../../modules/logs/logs.repository";
 
 async function log(
@@ -123,6 +123,15 @@ export async function runInstagramEnrichment(
         `#${i + 1} | ${lead.name} | WA: ${fields.whatsapp ?? "—"} | Seguidores: ${profile.follower_count ?? "—"}`,
       );
     } catch (err: unknown) {
+      const rejected = providerRejection(err);
+      if (rejected) {
+        await log(
+          campaignId,
+          `ScrapeCreators recusou a consulta (HTTP ${rejected}): créditos esgotados ou chave inválida. Enriquecimento interrompido.`,
+          "error",
+        );
+        break;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       await log(campaignId, `#${i + 1} | ${lead.name} | Erro: ${msg}`, "error");
     }

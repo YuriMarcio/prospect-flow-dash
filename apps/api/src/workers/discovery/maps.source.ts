@@ -72,6 +72,7 @@ export async function runMapsSource(run: DiscoveryRun): Promise<void> {
         places = await deps.serp.searchMaps({ query: strategy.query, start: page * 20 });
       } catch (err) {
         strategy.active = false;
+        run.errors++;
         await run.log(`[maps] busca falhou: ${err instanceof Error ? err.message : String(err)}`, "error");
         continue;
       }
@@ -159,6 +160,24 @@ async function saveBusiness(
     if (instagram) whatsapp = parseInstagramBio(instagram.snippet).whatsapp;
   }
 
+  // Sem telefone nem Instagram não há como prospectar: não polui o Kanban, vai para a fila técnica.
+  if (!phone && !whatsapp && !instagram) {
+    run.queue({
+      source: "maps",
+      dedupe_key: place.place_id ?? place.data_id ?? `${place.title}|${place.address ?? ""}`,
+      name: place.title,
+      instagram: null,
+      place_id: place.place_id ?? place.data_id ?? null,
+      address: place.address ?? null,
+      niche: "confirmed",
+      location: "confirmed",
+      reason: "no_contact_channel",
+      evidence: { type: place.type ?? null, website: place.website ?? null },
+    });
+    await run.log(`${place.title}: sem telefone nem Instagram. Foi para a fila técnica.`, "warn");
+    return;
+  }
+
   const outcome = await run.saveLead({
     source: "maps",
     identity: {
@@ -185,7 +204,7 @@ async function saveBusiness(
     await run.log(`Lead repetido ignorado: ${place.title}`, "warn");
   } else {
     await run.log(
-      `#${run.found} | ${place.title} | WA: ${whatsapp ?? "—"} | IG: ${instagram?.url ?? "—"} | Google Meu Negócio`,
+      `#${run.found} | ${place.title} | WA: ${whatsapp ?? "—"} | Tel: ${phone?.e164 ?? "—"} | IG: ${instagram?.url ?? "—"} | Google Meu Negócio`,
     );
   }
 }

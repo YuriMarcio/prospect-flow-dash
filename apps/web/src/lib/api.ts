@@ -108,7 +108,10 @@ function captureStatus(value: unknown): Capture["status"] {
 }
 
 function completionReason(value: unknown): Capture["completionReason"] {
-  return value === "goal_reached" || value === "sources_exhausted" || value === "budget_exhausted"
+  return value === "goal_reached" ||
+    value === "sources_exhausted" ||
+    value === "budget_exhausted" ||
+    value === "source_errors"
     ? value
     : undefined;
 }

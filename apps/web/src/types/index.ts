@@ -56,8 +56,8 @@ export interface Capture {
   delay: number;
   limit: number;
   status: "queued" | "running" | "done" | "error" | "cancelled";
-  /** Por que uma captura concluída parou: meta atingida, fontes esgotadas ou limite de buscas. */
-  completionReason?: "goal_reached" | "sources_exhausted" | "budget_exhausted";
+  /** Por que uma captura concluída parou: meta atingida, fontes esgotadas, limite de buscas ou falhas nas buscas. */
+  completionReason?: "goal_reached" | "sources_exhausted" | "budget_exhausted" | "source_errors";
   processed: number;
   found: number;
   errors: number;

@@ -44,8 +44,10 @@ export function parseProfileLink(link: string): ProfileLink | null {
 export function extractNameFromTitle(title: string): string {
   return title
     .split("(")[0]
-    .replace("- Instagram", "")
-    .replace("| Instagram", "")
+    // "Nome • Instagram photos and videos", "Nome - Fotos e vídeos do Instagram"
+    .replace(/\s*[•·|–-]\s*(?:Fotos e vídeos do )?Instagram.*$/i, "")
+    // "rosnalhamburgueria · Barreirinhas, MA": localização que o Instagram acrescenta ao título
+    .replace(/\s+[·•]\s+[^·•]+,\s*[A-Z]{2}$/, "")
     .trim();
 }
 

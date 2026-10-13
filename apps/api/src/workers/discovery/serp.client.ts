@@ -59,8 +59,32 @@ const SERP_BASE = "https://serpapi.com";
 
 const axiosGet: HttpGet = (url, config) => axios.get(url, config);
 
-export function createSerpClient(apiKey: string, http: HttpGet = axiosGet): SerpClient {
+const RETRY_DELAY_MS = 1500;
+
+/** Timeout, queda de rede ou 5xx: vale uma segunda tentativa. 4xx (chave, plano, parâmetro) não. */
+function isTransient(err: unknown): boolean {
+  const failure = err as { code?: string; message?: string; response?: { status?: number } };
+  if (failure.response?.status !== undefined) return failure.response.status >= 500;
+  return Boolean(failure.code === "ECONNABORTED" || failure.code === "ETIMEDOUT" || /timeout|network|socket/i.test(failure.message ?? ""));
+}
+
+export function createSerpClient(
+  apiKey: string,
+  rawHttp: HttpGet = axiosGet,
+  retryDelayMs = RETRY_DELAY_MS,
+): SerpClient {
   const locationCache = new Map<string, string | null>();
+
+  // Uma tentativa extra para falha transitória: um timeout não deve encerrar uma estratégia que rendia.
+  const http: HttpGet = async (url, config) => {
+    try {
+      return await rawHttp(url, config);
+    } catch (err) {
+      if (!isTransient(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      return rawHttp(url, config);
+    }
+  };
 
   return {
     async searchGoogle({ query, start = 0, location, nfpr }) {

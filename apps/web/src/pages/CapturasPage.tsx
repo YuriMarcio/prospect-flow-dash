@@ -20,6 +20,7 @@ const COMPLETION_LABEL: Record<NonNullable<Capture["completionReason"]>, string>
   goal_reached: "Meta atingida",
   sources_exhausted: "Fontes esgotadas",
   budget_exhausted: "Limite de buscas atingido",
+  source_errors: "Falhas nas buscas (cobertura incompleta)",
 };
 
 const CATEGORY_SUGGESTIONS = [

@@ -31,3 +31,12 @@ export function profileToLeadFields(profile: ScrapeCreatorsProfile) {
     enriched_at:   new Date().toISOString(),
   };
 }
+
+/**
+ * O ScrapeCreators recusou a consulta por chave inválida ou créditos esgotados (401/402/403).
+ * Insistir lead por lead só repete o erro, então quem chama deve parar de consultar.
+ */
+export function providerRejection(err: unknown): number | null {
+  const status = (err as { response?: { status?: number } } | null)?.response?.status;
+  return status === 401 || status === 402 || status === 403 ? status : null;
+}

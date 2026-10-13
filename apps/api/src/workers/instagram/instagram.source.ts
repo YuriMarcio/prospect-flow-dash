@@ -8,7 +8,7 @@ import {
   type NicheEvidence,
 } from "./instagram.filters";
 import { parseInstagramBio } from "./instagram.parser";
-import { profileToLeadFields } from "./instagram.profile";
+import { profileToLeadFields, providerRejection } from "./instagram.profile";
 
 /**
  * Fonte Instagram: Google Dorking via SerpAPI.
@@ -77,6 +77,7 @@ export async function runInstagramSource(run: DiscoveryRun): Promise<void> {
         });
       } catch (err) {
         strategy.active = false;
+        run.errors++;
         await run.log(`[${strategy.id}] busca falhou: ${err instanceof Error ? err.message : String(err)}`, "error");
         continue;
       }
@@ -129,6 +130,11 @@ export async function runInstagramSource(run: DiscoveryRun): Promise<void> {
         } else if (out.decision === "queued") {
           queueCandidate(run, candidate, "niche_unconfirmed");
         } else if (out.decision === "approved") {
+          fresh++;
+          run.metrics.approved++;
+          await saveCandidate(run, candidate);
+        } else if (knownFromOtherSource(run, candidate)) {
+          // Mesmo negócio já salvo pelo Maps: a cidade foi confirmada pelo endereço dele.
           fresh++;
           run.metrics.approved++;
           await saveCandidate(run, candidate);
@@ -216,6 +222,13 @@ async function saveCandidate(
   }
 }
 
+function knownFromOtherSource(run: DiscoveryRun, candidate: Candidate): boolean {
+  return run.knowsEstablishment(
+    { name: candidate.name, handle: candidate.handle, phone: parseInstagramBio(snippetOf(candidate)).whatsapp },
+    "instagram",
+  );
+}
+
 function queueCandidate(run: DiscoveryRun, candidate: Candidate, reason: string): void {
   candidate.status = "queued";
   run.queue({
@@ -247,7 +260,12 @@ async function validatePending(run: DiscoveryRun, candidates: Map<string, Candid
   );
 
   for (const candidate of pool) {
-    if (run.goalReached || run.cancelled) break;
+    if (run.goalReached || run.cancelled || run.providerBlocked) break;
+
+    if (knownFromOtherSource(run, candidate)) {
+      await saveCandidate(run, candidate);
+      continue;
+    }
 
     // Já existe no banco: não gasta consulta, só tenta adotar na campanha de destino.
     const existing = await deps.leads.findByInstagram(candidate.url);
@@ -275,7 +293,12 @@ async function validatePending(run: DiscoveryRun, candidates: Map<string, Candid
 
   if (run.goalReached || run.cancelled) return;
   for (const candidate of pool.filter((item) => item.status === "open")) {
-    queueCandidate(run, candidate, budget.remaining("enrich") === 0 ? "enrich_budget_exhausted" : "not_validated");
+    const reason = run.providerBlocked
+      ? "profile_provider_blocked"
+      : budget.remaining("enrich") === 0
+        ? "enrich_budget_exhausted"
+        : "not_validated";
+    queueCandidate(run, candidate, reason);
   }
 }
 
@@ -286,8 +309,18 @@ async function validateByBio(run: DiscoveryRun, candidate: Candidate): Promise<v
   try {
     profile = await deps.profiles.fetch(candidate.handle);
   } catch (err) {
-    queueCandidate(run, candidate, "profile_fetch_failed");
-    await run.log(`${candidate.name}: consulta de bio falhou: ${err instanceof Error ? err.message : String(err)}`, "warn");
+    run.errors++;
+    const rejected = providerRejection(err);
+    if (rejected) {
+      run.providerBlocked = true;
+      await run.log(
+        `ScrapeCreators recusou a consulta (HTTP ${rejected}): créditos esgotados ou chave inválida. Validação por bio interrompida.`,
+        "error",
+      );
+    } else {
+      await run.log(`${candidate.name}: consulta de bio falhou: ${err instanceof Error ? err.message : String(err)}`, "warn");
+    }
+    queueCandidate(run, candidate, rejected ? "profile_provider_blocked" : "profile_fetch_failed");
     return;
   }
 

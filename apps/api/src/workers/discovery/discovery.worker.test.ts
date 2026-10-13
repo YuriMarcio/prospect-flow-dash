@@ -36,16 +36,19 @@ interface Setup {
   pages?: Record<string, SerpOrganicResult[][]>;
   /** Resultados do Google Maps por query e página (20 por página). */
   mapsPages?: Record<string, MapsPlace[][]>;
-  profiles?: Record<string, ScrapeCreatorsProfile | null>;
+  profiles?: Record<string, ScrapeCreatorsProfile | null | Error>;
+  /** Queries cuja busca no Google falha (ex.: timeout). */
+  failQueries?: string[];
   existing?: string[];
   limits?: Partial<DiscoveryDeps["limits"]>;
   cancelAfterSearches?: number;
 }
 
-function setup({ pages = {}, mapsPages = {}, profiles = {}, existing = [], limits = {}, cancelAfterSearches }: Setup = {}) {
+function setup({ pages = {}, mapsPages = {}, profiles = {}, failQueries = [], existing = [], limits = {}, cancelAfterSearches }: Setup = {}) {
   const searches: Array<{ query: string; start: number }> = [];
   const mapsSearches: Array<{ query: string; start: number }> = [];
   const fetched: string[] = [];
+  const enrichCalls: number[] = [];
   const saved: Array<Record<string, unknown>> = [];
   const patches: CampaignStatsPatch[] = [];
   const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
@@ -63,6 +66,7 @@ function setup({ pages = {}, mapsPages = {}, profiles = {}, existing = [], limit
       },
       async searchGoogle({ query, start = 0 }) {
         searches.push({ query, start });
+        if (failQueries.includes(query)) throw new Error("timeout of 30000ms exceeded");
         return pages[query]?.[start / 10] ?? [];
       },
       async resolveLocation() {
@@ -98,7 +102,9 @@ function setup({ pages = {}, mapsPages = {}, profiles = {}, existing = [], limit
     profiles: {
       async fetch(handle) {
         fetched.push(handle);
-        return profiles[handle] ?? null;
+        const profile = profiles[handle];
+        if (profile instanceof Error) throw profile;
+        return profile ?? null;
       },
     },
     candidates: {
@@ -107,7 +113,8 @@ function setup({ pages = {}, mapsPages = {}, profiles = {}, existing = [], limit
         return { persisted: true };
       },
     },
-    async enrich() {
+    async enrich(_id, { maxCalls }) {
+      enrichCalls.push(maxCalls);
       return 0;
     },
     async log(_id, message) {
@@ -124,6 +131,7 @@ function setup({ pages = {}, mapsPages = {}, profiles = {}, existing = [], limit
     mapsSearches,
     updates,
     fetched,
+    enrichCalls,
     saved,
     logs,
     patches,
@@ -356,7 +364,7 @@ describe("runDiscovery (Google Meu Negócio)", () => {
   it("não aceita o primeiro perfil que aparecer: o nome precisa ser do mesmo negócio", async () => {
     const lookup = 'site:instagram.com "Zelândia Burger" "Santa Inês"';
     const s = setup({
-      mapsPages: { [MAPS_QUERY]: [[business({ phone: undefined })]] },
+      mapsPages: { [MAPS_QUERY]: [[business({ phone: "(98) 3333-4444" })]] },
       pages: { [lookup]: [[ig("outrolugar", "Outro Lugar Hamburgueria", "Santa Inês - MA")]] },
     });
 
@@ -398,7 +406,7 @@ describe("runDiscovery (Google Meu Negócio)", () => {
   it("limite de lookups: o negócio entra sem Instagram e a campanha fica budget_exhausted", async () => {
     const s = setup({
       limits: { maxLookupRequests: 0 },
-      mapsPages: { [MAPS_QUERY]: [[business({ phone: undefined })]] },
+      mapsPages: { [MAPS_QUERY]: [[business({ phone: "(98) 3333-4444" })]] },
     });
 
     await runDiscovery("c1", MAPS_INPUT, s.deps);
@@ -577,6 +585,65 @@ describe("vários segmentos", () => {
     await runDiscovery("c1", INPUT, s.deps);
 
     assert.ok(s.logs.every((line) => !line.startsWith("[Hamburgueria]")));
+    assert.equal(s.final()?.found, 1);
+  });
+});
+
+describe("regressões do primeiro teste real (Barreirinhas)", () => {
+  it("negócio do Maps sem telefone e sem Instagram não vira lead: fila técnica", async () => {
+    const s = setup({ mapsPages: { [MAPS_QUERY]: [[business({ phone: undefined })]] } });
+
+    await runDiscovery("c1", MAPS_INPUT, s.deps);
+
+    assert.equal(s.saved.length, 0);
+    assert.equal(s.final()?.found, 0);
+    assert.deepEqual(s.queued().map((row) => row.reason), ["no_contact_channel"]);
+  });
+
+  it("ScrapeCreators recusa (402): para de consultar bio, não enriquece e não diz 'fontes esgotadas'", async () => {
+    const refused = Object.assign(new Error("Request failed with status code 402"), { response: { status: 402 } });
+    const s = setup({
+      pages: { [STRATEGIES.category]: [[pending(1), pending(2), pending(3)]] },
+      profiles: { pend1burguer: refused },
+    });
+
+    await runDiscovery("c1", INPUT, s.deps);
+
+    assert.deepEqual(s.fetched, ["pend1burguer"], "não insiste nos outros");
+    assert.equal(s.saved.length, 0);
+    assert.deepEqual(s.enrichCalls, [], "enriquecimento final também é pulado");
+    assert.deepEqual(
+      s.queued().map((row) => row.reason),
+      ["profile_provider_blocked", "profile_provider_blocked", "profile_provider_blocked"],
+    );
+    assert.equal(s.final()?.completion_reason, "source_errors");
+  });
+
+  it("busca que falha por timeout marca source_errors, não sources_exhausted", async () => {
+    const s = setup({
+      failQueries: [STRATEGIES.synonyms],
+      pages: { [STRATEGIES.category]: [[approved(1)]] },
+    });
+
+    await runDiscovery("c1", INPUT, s.deps);
+
+    assert.equal(s.saved.length, 1);
+    assert.equal(s.final()?.completion_reason, "source_errors");
+  });
+
+  it("perfil do Instagram que é o mesmo negócio de um lead do Maps funde sem gastar consulta de bio", async () => {
+    const s = setup({
+      limits: { maxLookupRequests: 0 },
+      mapsPages: { [MAPS_QUERY]: [[business({ phone: "(98) 3333-4444" })]] },
+      // sem cidade no texto: sozinho seria "pendente" e pediria consulta de bio
+      pages: { [STRATEGIES.category]: [[ig("zelandiaburger", "Zelândia Burger (@zelandiaburger)", "o melhor burger")]] },
+    });
+
+    await runDiscovery("c1", { ...INPUT, sources: ["maps", "instagram"] }, s.deps);
+
+    assert.deepEqual(s.fetched, []);
+    assert.equal(s.saved.length, 1);
+    assert.equal(s.updates[0].data.instagram, "https://www.instagram.com/zelandiaburger/");
     assert.equal(s.final()?.found, 1);
   });
 });
