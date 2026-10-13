@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -15,6 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { createIfoodCampaign } from "@/lib/api";
 import { Field } from "./Field";
+import { CaptureDestinationField } from "./CaptureDestinationField";
+import { NO_DESTINATION, resolveDestination } from "./captureDestination";
 
 const ifoodSchema = z.object({
   category: z.string().min(1, "Informe a categoria"),
@@ -29,12 +32,16 @@ export function IfoodFormDialog({
   open,
   onOpenChange,
   anyRunning,
+  campaignId,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   anyRunning: boolean;
+  /** Painel que recebe os leads (aberto de dentro de uma campanha); sem ele o usuário escolhe. */
+  campaignId?: string | null;
 }) {
   const queryClient = useQueryClient();
+  const [destination, setDestination] = useState(NO_DESTINATION);
 
   const form = useForm<IfoodFormData>({
     resolver: zodResolver(ifoodSchema),
@@ -42,13 +49,17 @@ export function IfoodFormDialog({
   });
 
   const mutation = useMutation({
-    mutationFn: (data: IfoodFormData) => createIfoodCampaign(data),
+    mutationFn: (data: IfoodFormData) =>
+      createIfoodCampaign({ ...data, prospectingCampaignId: resolveDestination(campaignId, destination) }),
     onSuccess: (campaign) => {
       toast.success("Captura iFood iniciada!", {
         description: `${campaign.category} em ${campaign.city} • ${campaign.quantity} leads`,
       });
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["captures"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      setDestination(NO_DESTINATION);
       form.reset({ category: "", city: "", zipCode: "", quantity: 50 });
       onOpenChange(false);
     },
@@ -88,6 +99,8 @@ export function IfoodFormDialog({
               <Input type="number" min={1} max={500} {...form.register("quantity")} />
             </Field>
           </div>
+
+          <CaptureDestinationField value={destination} onChange={setDestination} fixedCampaignId={campaignId} />
 
           {mutation.isError && (
             <p className="text-sm text-destructive">Erro ao iniciar captura. Tente novamente.</p>

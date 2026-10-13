@@ -35,9 +35,9 @@ function StatTile({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="px-4 py-3">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-semibold">
+      <p className="mt-0.5 text-xl font-semibold">
         {value}
         {valueSuffix && (
           <span className="ml-1 text-sm font-normal text-muted-foreground">{valueSuffix}</span>
@@ -93,14 +93,14 @@ export function CampaignMetricsPanel({
   // ── Demais tiles ──────────────────────────────────────────────────────────
   const total = metrics?.total;
   const intentEntries = Object.entries(metrics?.intents ?? {}).sort((a, b) => b[1] - a[1]);
-  const filterChips = [...(status?.filters.cities ?? []), ...(status?.filters.segments ?? [])];
+  // Os filtros de cidade/segmento só importam quando o preenchimento automático está ligado
+  const filterChips = status?.filters.autoFill
+    ? [...(status?.filters.cities ?? []), ...(status?.filters.segments ?? [])]
+    : [];
 
   return (
-    <div className="space-y-2.5">
-      <div
-        className="grid gap-2.5"
-        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}
-      >
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-4 lg:divide-y-0">
         <StatTile
           label="Disparos de hoje"
           value={todayCount}
@@ -155,7 +155,7 @@ export function CampaignMetricsPanel({
       </div>
 
       {(intentEntries.length > 0 || (total?.failed ?? 0) > 0 || filterChips.length > 0) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-border bg-card px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border px-4 py-2.5">
           {intentEntries.length > 0 && (
             <>
               <span className="text-[11px] text-muted-foreground">Intenções:</span>

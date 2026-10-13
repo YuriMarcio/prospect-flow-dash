@@ -35,17 +35,19 @@ export function NewCampaignModal({
   const myUsername = useAuthStore((s) => s.username);
   const [name, setName] = useState("");
   const [ownerUserId, setOwnerUserId] = useState("");
+  const [region, setRegion] = useState("");
 
   const usersQuery = useQuery({ queryKey: ["users"], queryFn: listUsers, enabled: open });
 
   const createMutation = useMutation({
-    mutationFn: () => createCampaign({ name: name.trim(), ownerUserId }),
+    mutationFn: () => createCampaign({ name: name.trim(), ownerUserId, region: region.trim() || null }),
     onSuccess: (campaign) => {
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["prospecting-campaigns"] });
       onCreated(campaign);
       onOpenChange(false);
       setName("");
       setOwnerUserId("");
+      setRegion("");
     },
   });
 
@@ -73,6 +75,18 @@ export function NewCampaignModal({
           </div>
 
           <div className="space-y-1.5">
+            <Label>Território (opcional)</Label>
+            <Input
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+              placeholder="ex: Ilha do Governador"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              A região que essa campanha cuida. Aparece embaixo do nome e já vem preenchida nas capturas.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
             <Label>Responsável pelo envio</Label>
             <Select value={ownerUserId} onValueChange={setOwnerUserId}>
               <SelectTrigger>
@@ -94,8 +108,8 @@ export function NewCampaignModal({
           </div>
 
           <p className="text-xs text-muted-foreground pt-1 border-t border-border">
-            Agenda, filtros e mensagens ficam com valores padrão — ajuste em "Configurar campanha"
-            depois de criar.
+            Depois de criar, cadastre ou capture os leads da região e escolha com quais o bot vai
+            falar. Agenda e mensagens ficam com valores padrão — ajuste em "Configurar campanha".
           </p>
         </div>
 

@@ -100,6 +100,7 @@ export async function runIfoodScraping(
   zipCode: string,
   category: string,
   quantity: number,
+  prospectingCampaignId?: string,  // painel (campanha de prospecção) que recebe os leads; sem ele vão pro Kanban geral
 ): Promise<void> {
   if (!process.env.GECKO_API_KEY) {
     await log(campaignId, `GECKO_API_KEY não configurada no .env. Abortando.`, "error");
@@ -152,14 +153,25 @@ export async function runIfoodScraping(
 
         processed++;
 
-        const alreadyExists = await leadsRepository.existsByNameAndCity(name, city);
-        if (alreadyExists) {
-          await log(campaignId, `[${processed}] ${name} | PULANDO (já existe no banco)`);
+        // Repetido (por nome+cidade ou por outro campo único): se solto e há campanha de destino,
+        // é adotado por ela; senão é pulado como sempre.
+        const existing = await leadsRepository.findByNameAndCity(name, city);
+        if (existing) {
+          const outcome = prospectingCampaignId
+            ? await leadsRepository.adoptDuplicate(existing, prospectingCampaignId)
+            : "other";
+          if (outcome === "adopted") found++;
+          await log(
+            campaignId,
+            outcome === "adopted"
+              ? `[${processed}] ${name} | ADOTADO (já existia, agora está na campanha)`
+              : `[${processed}] ${name} | PULANDO (já existe no banco)`,
+          );
           await campaignsRepository.updateStats(campaignId, { processed, found });
           continue;
         }
 
-        const { lead, created } = await leadsRepository.createUnique({
+        const result = await leadsRepository.createUnique({
           campaign_id: campaignId,
           name,
           ifood_url: ifoodUrl || undefined,
@@ -168,13 +180,22 @@ export async function runIfoodScraping(
           city,
           category,
           source: "ifood",
+          ...(prospectingCampaignId ? { prospecting_campaign_id: prospectingCampaignId } : {}),
         });
 
-        if (!created || !lead) {
-          await log(campaignId, `[${processed}] ${name} | DUPLICADO`);
+        if (!result.created) {
+          const outcome = prospectingCampaignId
+            ? await leadsRepository.adoptDuplicate(result.lead, prospectingCampaignId)
+            : "other";
+          if (outcome === "adopted") found++;
+          await log(
+            campaignId,
+            `[${processed}] ${name} | ${outcome === "adopted" ? "ADOTADO (já existia, agora está na campanha)" : "DUPLICADO"}`,
+          );
           await campaignsRepository.updateStats(campaignId, { processed, found });
           continue;
         }
+        const lead = result.lead;
 
         found++;
 

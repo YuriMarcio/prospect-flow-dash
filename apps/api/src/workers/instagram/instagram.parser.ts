@@ -1,4 +1,4 @@
-import { parsePhoneNumberFromString } from "libphonenumber-js";
+import { normalizeToE164 } from "../../lib/phone";
 
 export interface ParsedBioData {
   whatsapp: string | null;
@@ -37,18 +37,6 @@ export function extractUsernameFromUrl(url: string): string | null {
   const reserved = ["p", "reel", "stories", "explore", "accounts", "tv", "reels"];
   if (reserved.includes(username)) return null;
   return username || null;
-}
-
-function normalizeToE164(raw: string): string | null {
-  const digits = raw.replace(/\D/g, "");
-
-  const withDefault = parsePhoneNumberFromString(digits, "BR");
-  if (withDefault?.isValid()) return withDefault.format("E.164");
-
-  const withPlus = parsePhoneNumberFromString(`+${digits}`);
-  if (withPlus?.isValid()) return withPlus.format("E.164");
-
-  return null;
 }
 
 export function extractWhatsappFromBio(

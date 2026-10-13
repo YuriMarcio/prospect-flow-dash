@@ -24,6 +24,11 @@ export interface Lead {
   prospectingChannel?: "whatsapp" | "instagram" | "email";
   meetingAt?: string;
   meetingNotes?: string;
+  /** De onde veio o lead: "manual", "instagram", "ifood" ou "instadelivery". */
+  source?: string;
+  /** Campanha de prospecção (painel do território) a que ele pertence; vazio = Kanban geral. */
+  prospectingCampaignId?: string | null;
+  notes?: string;
 }
 
 export interface TimelineEvent {

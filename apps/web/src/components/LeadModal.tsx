@@ -1,18 +1,22 @@
+import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useLeadModalStore } from "@/store/leadModal";
 import { useKanbanStore } from "@/store/kanban";
+import { LeadFormDialog } from "@/components/prospector/campaign-panel/LeadFormDialog";
 import { StatusBadge } from "./StatusBadge";
 import { ActivityTimeline } from "./ActivityTimeline";
-import { Building2, Instagram, Phone, MapPin, Star, Calendar, User, Link as LinkIcon, Users, ShoppingBag, ExternalLink, FileText, MessageCircle } from "lucide-react";
+import { Building2, Instagram, Pencil, Phone, MapPin, Star, Calendar, User, Link as LinkIcon, Users, ShoppingBag, ExternalLink, FileText, MessageCircle } from "lucide-react";
 
 export function LeadModal() {
   const { leadId, close } = useLeadModalStore();
   const lead = useKanbanStore((s) => s.leads.find((l) => l.id === leadId));
+  const [editing, setEditing] = useState(false);
 
   return (
+    <>
     <Sheet open={!!lead} onOpenChange={(v) => !v && close()}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto p-0">
         {lead && (
@@ -28,8 +32,9 @@ export function LeadModal() {
                 <StatusBadge status={lead.status} />
               </div>
               <div className="flex flex-wrap gap-2 mt-3">
-                <Button size="sm"><Phone className="h-3.5 w-3.5" /> Ligar</Button>
-                <Button size="sm" variant="secondary">Adicionar nota</Button>
+                <Button size="sm" onClick={() => setEditing(true)}><Pencil className="h-3.5 w-3.5" /> Editar</Button>
+                <Button size="sm" variant="secondary"><Phone className="h-3.5 w-3.5" /> Ligar</Button>
+                <Button size="sm" variant="outline">Adicionar nota</Button>
                 <Button size="sm" variant="outline">Próximo follow-up</Button>
               </div>
             </SheetHeader>
@@ -115,6 +120,8 @@ export function LeadModal() {
         )}
       </SheetContent>
     </Sheet>
+    <LeadFormDialog open={editing && !!lead} onOpenChange={setEditing} lead={lead} />
+    </>
   );
 }
 

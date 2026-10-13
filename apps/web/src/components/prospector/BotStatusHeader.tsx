@@ -25,6 +25,7 @@ function formatTime(iso: string | null): string | null {
 export function BotStatusHeader({
   campaignId,
   campaignName,
+  region,
   status,
   onConfigure,
   onConnect,
@@ -32,6 +33,8 @@ export function BotStatusHeader({
 }: {
   campaignId: string;
   campaignName: string;
+  /** Território da campanha (ex.: "Ilha do Governador"), mostrado embaixo do nome. */
+  region?: string | null;
   status: CampaignStatus | undefined;
   onConfigure: (tab?: string) => void;
   onConnect: () => void;
@@ -50,9 +53,9 @@ export function BotStatusHeader({
   const deleteMutation = useMutation({
     mutationFn: () => deleteCampaign(campaignId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["prospecting-campaigns"] });
       toast.success(
-        `Campanha "${campaignName}" excluída. Os leads voltaram pro pool compartilhado.`,
+        `Campanha "${campaignName}" excluída. Os leads voltaram para o Kanban geral.`,
       );
       onDeleted();
     },
@@ -73,7 +76,7 @@ export function BotStatusHeader({
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{campaignName}</h1>
         <p className="text-sm text-muted-foreground">
-          Arraste leads entre colunas · bot ativo gerenciando disparos
+          {region ? `${region} · ` : ""}você escolhe quais leads o bot contata
         </p>
       </div>
 
@@ -160,8 +163,8 @@ export function BotStatusHeader({
               <AlertDialogTitle>Excluir "{campaignName}"?</AlertDialogTitle>
               <AlertDialogDescription>
                 A fila, o plano da semana e as mensagens dessa campanha são apagados. Os leads que
-                estavam nela voltam pro pool compartilhado, disponíveis pra outra campanha. Essa
-                ação não pode ser desfeita.
+                estavam nela voltam para o Kanban geral, disponíveis para outra campanha. Essa ação
+                não pode ser desfeita.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

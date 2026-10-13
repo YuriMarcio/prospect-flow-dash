@@ -16,10 +16,13 @@ export function KanbanColumn({
   column,
   leads,
   botDispatchByLeadId,
+  onAddLead,
 }: {
   column: KanbanColumnT;
   leads: Lead[];
   botDispatchByLeadId?: Record<string, BotDispatchInfo>;
+  /** Cadastrar um lead novo nesta coluna (o "+" do cabeçalho). */
+  onAddLead?: (columnId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const { deleteColumn, updateColumn } = useKanbanStore();
@@ -42,8 +45,11 @@ export function KanbanColumn({
         </span>
         <div className="flex items-center">
           <button
+            type="button"
+            onClick={() => onAddLead?.(column.id)}
             className="h-6 w-6 grid place-items-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Adicionar lead"
+            title="Novo lead nesta coluna"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>

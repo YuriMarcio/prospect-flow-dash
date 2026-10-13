@@ -17,7 +17,7 @@ export function RunningCampaignPanel({ campaign }: { campaign: Capture }) {
 
   const stopMutation = useMutation({
     mutationFn: stopCampaign,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaigns"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["captures"] }),
   });
 
   const pct = campaign.quantity > 0

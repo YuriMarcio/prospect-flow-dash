@@ -12,6 +12,7 @@ import {
 import { SessionControlCard } from "./SessionControlCard";
 import { AgendaCard } from "./AgendaCard";
 import { CityCombobox } from "./CityCombobox";
+import { Switch } from "@/components/ui/switch";
 
 const SEGMENT_SUGGESTIONS = ["Hamburgueria", "Pizzaria", "Açaí", "Cafeteria"];
 
@@ -111,7 +112,7 @@ export function ExecutionTab({ campaign }: { campaign: ProspectingCampaign }) {
       setDirty(false);
       queryClient.invalidateQueries({ queryKey: ["campaign", campaign.id] });
       queryClient.invalidateQueries({ queryKey: ["campaign-status", campaign.id] });
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["prospecting-campaigns"] });
       toast.success("Agenda e filtros salvos.");
     },
     onError: (error: Error) => toast.error(error.message),
@@ -145,36 +146,59 @@ export function ExecutionTab({ campaign }: { campaign: ProspectingCampaign }) {
       />
 
       <div className="rounded-lg border border-border bg-card p-4 space-y-4">
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Cidades</p>
-          <CityCombobox
-            values={filters.cities}
-            onChange={(cities) => {
-              setFilters({ ...filters, cities });
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">Preenchimento automático</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {filters.autoFill
+                ? "Todo dia o bot completa a fila sozinho com leads soltos que combinem com as cidades e segmentos abaixo."
+                : "Desligado: o bot só fala com os leads que você enviar pelo painel da campanha."}
+            </p>
+          </div>
+          <Switch
+            checked={filters.autoFill === true}
+            onCheckedChange={(autoFill) => {
+              setFilters({ ...filters, autoFill });
               setDirty(true);
             }}
+            aria-label="Preenchimento automático"
           />
         </div>
 
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Segmentos</p>
-          <SegmentChips
-            values={filters.segments}
-            onAdd={(value) => {
-              setFilters({ ...filters, segments: [...filters.segments, value] });
-              setDirty(true);
-            }}
-            onRemove={(value) => {
-              setFilters({ ...filters, segments: filters.segments.filter((s) => s !== value) });
-              setDirty(true);
-            }}
-          />
-          {filters.segments.length === 0 && (
-            <p className="text-[11px] text-muted-foreground">
-              Sugestões: {SEGMENT_SUGGESTIONS.join(", ")}
-            </p>
-          )}
-        </div>
+        {filters.autoFill && (
+          <>
+            <div className="space-y-2 border-t border-border pt-4">
+              <p className="text-sm font-medium">Cidades</p>
+              <CityCombobox
+                values={filters.cities}
+                onChange={(cities) => {
+                  setFilters({ ...filters, cities });
+                  setDirty(true);
+                }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Segmentos</p>
+              <SegmentChips
+                values={filters.segments}
+                onAdd={(value) => {
+                  setFilters({ ...filters, segments: [...filters.segments, value] });
+                  setDirty(true);
+                }}
+                onRemove={(value) => {
+                  setFilters({ ...filters, segments: filters.segments.filter((s) => s !== value) });
+                  setDirty(true);
+                }}
+              />
+              {filters.segments.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Sugestões: {SEGMENT_SUGGESTIONS.join(", ")}
+                </p>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="flex justify-end">

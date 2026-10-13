@@ -7,7 +7,11 @@ export interface ProspectingCampaignRow {
   created_by_user_id: string;
   region: string | null;
   segment: string | null;
-  filters: { cities: string[]; segments: string[] };
+  /**
+   * `autoFill` liga o preenchimento automático da fila por cidade/segmento. Ausente/false
+   * (padrão) = campanha manual: o bot só fala com os leads que o usuário enviar.
+   */
+  filters: { cities: string[]; segments: string[]; autoFill?: boolean };
   schedule: Record<string, { enabled: boolean; limit: number }>;
   window_start: string;
   window_end: string;

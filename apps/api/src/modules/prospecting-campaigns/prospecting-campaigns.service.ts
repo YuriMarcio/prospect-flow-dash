@@ -7,6 +7,7 @@ import * as botLogs from "../prospector/botlogs.repository";
 import * as leadsRepository from "../leads/leads.repository";
 import * as leadFlowStateRepository from "../prospector/lead-flow-state.repository";
 import { loadGraph, resolveEntryFromGraph } from "../../workers/prospector/flow-engine";
+import { enqueueLeadsBatch } from "../../workers/prospector/queue-builder.worker";
 import { getDispatchInterval, getEffectiveDailyLimit, isWarmingDone } from "../../workers/prospector/warming";
 import {
   startSessionForCampaign,
@@ -41,7 +42,7 @@ export async function createCampaignService(input: {
   createdByUserId: string;
   region?: string | null;
   segment?: string | null;
-  filters?: { cities: string[]; segments: string[] };
+  filters?: { cities: string[]; segments: string[]; autoFill?: boolean };
   schedule?: Record<string, { enabled: boolean; limit: number }>;
   windowStart?: string;
   windowEnd?: string;
@@ -188,9 +189,10 @@ export async function getCampaignMetricsService(campaignId: string) {
 }
 
 /**
- * "Limpar leads da campanha": remove o vínculo dos leads e cancela envios
- * pendentes. Status/coluna dos leads não mudam; o histórico de enviados e
- * respondidos permanece na dispatch_queue.
+ * "Cancelar envios pendentes": esvazia a fila e o plano e para os fluxos em andamento.
+ * Os leads CONTINUAM na campanha (ela é um painel permanente do território) e o histórico
+ * de enviados e respondidos permanece na dispatch_queue. Pra tirar um lead da campanha,
+ * use removeLeadFromCampaignService.
  */
 export async function clearCampaignLeadsService(campaignId: string) {
   const campaign = await campaignsRepository.findById(campaignId);
@@ -199,10 +201,88 @@ export async function clearCampaignLeadsService(campaignId: string) {
   await queueRepository.removeWaitingForCampaign(campaignId);
   await planRepository.removeAllForCampaign(campaignId);
   await leadFlowStateRepository.stopAllForCampaign(campaignId);
-  await leadsRepository.releaseCampaign(campaignId);
 
-  await botLogs.create("Leads da campanha liberados (vínculo removido, envios pendentes cancelados).", "info", campaignId);
+  await botLogs.create("Envios pendentes cancelados (fila e plano esvaziados).", "info", campaignId);
   return { ok: true };
+}
+
+export type CampaignLeadBotStatus = "none" | "planned" | "queued" | "sent" | "replied" | "failed";
+
+/**
+ * Leads do painel da campanha, cada um com a situação no bot (derivada da fila e do plano):
+ * replied > sent > queued (1ª mensagem aguardando) > failed > planned (dia futuro) > none.
+ */
+export async function listCampaignLeadsService(campaignId: string) {
+  const campaign = await campaignsRepository.findById(campaignId);
+  if (!campaign) throw new Error("Campanha não encontrada.");
+
+  const [leads, queue, plan] = await Promise.all([
+    leadsRepository.findByProspectingCampaign(campaignId),
+    queueRepository.findAllForCampaign(campaignId),
+    planRepository.findAll(campaignId),
+  ]);
+
+  const queueByLead = new Map<string, typeof queue>();
+  for (const row of queue) queueByLead.set(row.lead_id, [...(queueByLead.get(row.lead_id) ?? []), row]);
+  const planByLead = new Map(plan.map((row) => [row.lead_id, row.planned_date]));
+
+  return leads.map((lead: Record<string, unknown> & { id: string }) => {
+    const rows = queueByLead.get(lead.id) ?? [];
+    const has = (...statuses: string[]) => rows.some((row) => statuses.includes(row.status));
+    const waiting = rows.filter((row) => row.status === "waiting" || row.status === "sending");
+
+    let status: CampaignLeadBotStatus = "none";
+    let date: string | null = null;
+    if (has("replied")) status = "replied";
+    else if (has("sent")) status = "sent";
+    else if (waiting.length > 0) {
+      status = "queued";
+      date = waiting[0].scheduled_at;
+    } else if (has("failed")) status = "failed";
+    else if (planByLead.has(lead.id)) {
+      status = "planned";
+      date = planByLead.get(lead.id) ?? null;
+    }
+
+    return { ...lead, bot: { status, date } };
+  });
+}
+
+/** Põe no painel da campanha leads que estavam soltos no Kanban geral. */
+export async function addLeadsToCampaignService(campaignId: string, leadIds: string[]) {
+  const campaign = await campaignsRepository.findById(campaignId);
+  if (!campaign) throw new Error("Campanha não encontrada.");
+
+  let added = 0;
+  const skipped: { leadId: string; reason: string }[] = [];
+  for (const leadId of new Set(leadIds)) {
+    if (await leadsRepository.claimForCampaign(leadId, campaignId)) {
+      added++;
+      continue;
+    }
+    const otherId = await leadsRepository.findCampaignIdForLead(leadId);
+    const other = otherId ? await campaignsRepository.findById(otherId) : null;
+    skipped.push({ leadId, reason: `Este lead já está na campanha "${other?.name ?? "outra"}".` });
+  }
+  return { added, skipped };
+}
+
+/** Tira o lead da campanha: cancela o envio pendente dele e devolve ao Kanban geral. */
+export async function removeLeadFromCampaignService(campaignId: string, leadId: string) {
+  const campaign = await campaignsRepository.findById(campaignId);
+  if (!campaign) throw new Error("Campanha não encontrada.");
+
+  await queueRepository.removeWaitingForLead(leadId, campaignId);
+  await planRepository.unassign(leadId);
+  await leadFlowStateRepository.stopForLead(leadId, campaignId);
+  await leadsRepository.removeFromCampaign(leadId, campaignId);
+}
+
+/** Manda o bot falar só com os leads escolhidos (hoje ou num dia futuro). */
+export async function dispatchLeadsService(campaignId: string, input: { leadIds: string[]; date?: string }) {
+  if (!Array.isArray(input.leadIds) || input.leadIds.length === 0) throw new Error("Selecione ao menos um lead.");
+  if (input.date && !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new Error("Data inválida.");
+  return enqueueLeadsBatch(campaignId, input.leadIds, input.date);
 }
 
 export { startSessionForCampaign as startCampaignSessionService, stopSessionForCampaign as stopCampaignSessionService };

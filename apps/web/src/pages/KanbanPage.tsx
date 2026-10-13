@@ -33,14 +33,9 @@ import { CampaignMetricsPanel } from "@/components/prospector/CampaignMetricsPan
 import { ConnectQrDialog } from "@/components/prospector/ConnectQrDialog";
 import { CampaignBoard } from "@/components/prospector/board/CampaignBoard";
 import { deduplicateLeads, getStatusForColumn, updateLead as updateLeadApi } from "@/lib/api";
-import {
-  getCampaignStatus,
-  listCampaigns,
-  listDispatchQueue,
-  listDispatchQueueHistory,
-  type ProspectingCampaign,
-} from "@/lib/prospector";
-import { BotWeekBoard } from "@/components/prospector/BotWeekBoard";
+import { getCampaignStatus, listCampaigns, listDispatchQueue, type ProspectingCampaign } from "@/lib/prospector";
+import { CampaignLeadsPanel } from "@/components/prospector/campaign-panel/CampaignLeadsPanel";
+import { LeadFormDialog } from "@/components/prospector/campaign-panel/LeadFormDialog";
 import { NewCampaignModal } from "@/components/prospector/NewCampaignModal";
 import { useLeadsSync } from "@/hooks/use-leads-sync";
 import { Button } from "@/components/ui/button";
@@ -119,6 +114,8 @@ export function KanbanPage() {
   const [configBoard, setConfigBoard] = useState<{ open: boolean; tab?: string }>({ open: false });
   const [boardView, setBoardView] = useState<string>("geral");
   const [newCampaignOpen, setNewCampaignOpen] = useState(false);
+  // Cadastro manual no Kanban geral: guarda a coluna onde o "+" foi clicado
+  const [newLeadColumnId, setNewLeadColumnId] = useState<string | null>(null);
 
   // Estado do formulário de reunião
   const [meetingDate, setMeetingDate] = useState("");
@@ -129,7 +126,7 @@ export function KanbanPage() {
   const leadsQuery = useLeadsSync();
   const queryClient = useQueryClient();
 
-  const campaignsQuery = useQuery({ queryKey: ["campaigns"], queryFn: listCampaigns });
+  const campaignsQuery = useQuery({ queryKey: ["prospecting-campaigns"], queryFn: listCampaigns });
   const campaigns = campaignsQuery.data ?? [];
   const activeCampaign = campaigns.find((c) => c.id === boardView);
 
@@ -152,13 +149,6 @@ export function KanbanPage() {
     queryFn: () => listDispatchQueue(activeCampaign!.id),
     enabled: Boolean(activeCampaign),
     refetchInterval: 5000,
-  });
-
-  const campaignQueueHistoryQuery = useQuery({
-    queryKey: ["bot-queue-history", activeCampaign?.id],
-    queryFn: () => listDispatchQueueHistory(activeCampaign!.id),
-    enabled: Boolean(activeCampaign),
-    refetchInterval: 8000,
   });
 
   const botDispatchByLeadId = useMemo(() => {
@@ -364,17 +354,14 @@ export function KanbanPage() {
           <BotStatusHeader
             campaignId={activeCampaign.id}
             campaignName={activeCampaign.name}
+            region={activeCampaign.region}
             status={campaignStatusQuery.data}
             onConfigure={(tab) => setConfigBoard({ open: true, tab })}
             onConnect={() => setConnectOpen(true)}
             onDeleted={() => setBoardView("geral")}
           />
           <CampaignMetricsPanel campaignId={activeCampaign.id} status={campaignStatusQuery.data} />
-          <BotWeekBoard
-            campaignId={activeCampaign.id}
-            leads={leads}
-            dispatchHistory={campaignQueueHistoryQuery.data ?? []}
-          />
+          <CampaignLeadsPanel campaign={activeCampaign} status={campaignStatusQuery.data} />
 
           <ConnectQrDialog open={connectOpen} onOpenChange={setConnectOpen} />
           <CampaignBoard
@@ -425,6 +412,7 @@ export function KanbanPage() {
               </AlertDialog>
 
               <Button
+                variant="outline"
                 onClick={() => {
                   const t = prompt("Nome da nova coluna");
                   if (t) addColumn(t);
@@ -432,6 +420,11 @@ export function KanbanPage() {
               >
                 <Plus className="h-4 w-4" />
                 Nova coluna
+              </Button>
+
+              <Button onClick={() => setNewLeadColumnId(sorted[0]?.id ?? "col-1")}>
+                <Plus className="h-4 w-4" />
+                Novo lead
               </Button>
             </div>
           </div>
@@ -508,6 +501,7 @@ export function KanbanPage() {
                   column={col}
                   leads={filtered.filter((l) => l.columnId === col.id)}
                   botDispatchByLeadId={botDispatchByLeadId}
+                  onAddLead={setNewLeadColumnId}
                 />
               ))}
               <button
@@ -534,6 +528,13 @@ export function KanbanPage() {
           </DndContext>
         </>
       )}
+
+      {/* Cadastro manual de lead no Kanban geral (o "+" da coluna ou o botão do topo) */}
+      <LeadFormDialog
+        open={newLeadColumnId !== null}
+        onOpenChange={(open) => !open && setNewLeadColumnId(null)}
+        columnId={newLeadColumnId ?? undefined}
+      />
 
       {/* Dialog: canal + reunião */}
       <Dialog

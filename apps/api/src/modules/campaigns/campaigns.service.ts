@@ -1,8 +1,20 @@
 import * as campaignsRepository from "./campaigns.repository";
+import * as prospectingCampaignsRepository from "../prospecting-campaigns/prospecting-campaigns.repository";
 import { runInstagramDiscovery } from "../../workers/instagram/instagram.discovery.worker";
 import { runInstaDeliveryScraping } from "../../workers/instadelivery/instadelivery.worker";
 import { runIfoodScraping } from "../../workers/ifood/ifood.worker";
 import { cancel } from "../../lib/cancellation";
+
+/**
+ * Campanha de prospecção (painel do território) que recebe os leads da captura.
+ * Opcional: sem ela os leads vão pro Kanban geral, como sempre foi.
+ */
+async function resolveDestination(data: Record<string, unknown>): Promise<string | undefined> {
+  const id = typeof data.prospectingCampaignId === "string" ? data.prospectingCampaignId.trim() : "";
+  if (!id) return undefined;
+  if (!(await prospectingCampaignsRepository.findById(id))) throw new Error("Campanha de destino não encontrada.");
+  return id;
+}
 
 // ---------------------------------------------------------------------------
 // CRUD básico
@@ -36,6 +48,7 @@ export async function getCampaignService(id: string) {
  * ainda não começou.
  */
 export async function campaignleadsearchService(data: Record<string, unknown>) {
+  const prospectingCampaignId = await resolveDestination(data);
   const campaign = await campaignsRepository.create(data);
 
   if (!campaign) {
@@ -48,6 +61,7 @@ export async function campaignleadsearchService(data: Record<string, unknown>) {
     data.category as string,
     data.city as string,
     (data.quantity as number) ?? 100,
+    prospectingCampaignId,
   ).catch(async (err) => {
     console.error(`[SERVICE] Worker falhou para campanha ${campaign.id}:`, err);
     await campaignsRepository.updateStatus(campaign.id, "error").catch(() => {});
@@ -61,6 +75,7 @@ export async function campaignleadsearchService(data: Record<string, unknown>) {
 // ---------------------------------------------------------------------------
 
 export async function campaignInstagramSearchService(data: Record<string, unknown>) {
+  const prospectingCampaignId = await resolveDestination(data);
   const campaign = await campaignsRepository.create(data);
 
   if (!campaign) {
@@ -73,6 +88,7 @@ export async function campaignInstagramSearchService(data: Record<string, unknow
     data.category as string,
     data.city as string,
     (data.quantity as number) ?? 100,
+    prospectingCampaignId,
   ).catch((err) =>
     console.error(`[SERVICE] Worker falhou para campanha ${campaign.id}:`, err),
   );
@@ -94,6 +110,7 @@ export async function campaignInstagramSearchService(data: Record<string, unknow
 // ---------------------------------------------------------------------------
 
 export async function campaignInstaDeliverySearchService(data: Record<string, unknown>) {
+  const prospectingCampaignId = await resolveDestination(data);
   const campaign = await campaignsRepository.create(data);
 
   if (!campaign) {
@@ -104,6 +121,7 @@ export async function campaignInstaDeliverySearchService(data: Record<string, un
     campaign.id,
     data.city as string,
     (data.quantity as number) ?? 50,
+    prospectingCampaignId,
   ).catch(async (err) => {
     console.error(`[SERVICE] InstaDelivery worker falhou para campanha ${campaign.id}:`, err);
     await campaignsRepository.updateStatus(campaign.id, "error").catch(() => {});
@@ -117,6 +135,7 @@ export async function campaignInstaDeliverySearchService(data: Record<string, un
 // ---------------------------------------------------------------------------
 
 export async function campaignIfoodSearchService(data: Record<string, unknown>) {
+  const prospectingCampaignId = await resolveDestination(data);
   const campaign = await campaignsRepository.create(data);
 
   if (!campaign) {
@@ -129,6 +148,7 @@ export async function campaignIfoodSearchService(data: Record<string, unknown>) 
     data.zipCode as string,
     data.category as string,
     (data.quantity as number) ?? 50,
+    prospectingCampaignId,
   ).catch(async (err) => {
     console.error(`[SERVICE] iFood worker falhou para campanha ${campaign.id}:`, err);
     await campaignsRepository.updateStatus(campaign.id, "error").catch(() => {});

@@ -193,6 +193,30 @@ export async function findCampaignIdForLead(leadId: string): Promise<string | nu
   return data?.prospecting_campaign_id ?? null;
 }
 
+/** Leads que pertencem a uma campanha de prospecção (o painel do território), mais recentes primeiro. */
+export async function findByProspectingCampaign(campaignId: string) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("prospecting_campaign_id", campaignId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+/** Tira o lead da campanha (volta pro Kanban geral). Só mexe se ele for mesmo dessa campanha. */
+export async function removeFromCampaign(leadId: string, campaignId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("leads")
+    .update({ prospecting_campaign_id: null })
+    .eq("id", leadId)
+    .eq("prospecting_campaign_id", campaignId);
+  if (error) throw new Error(error.message);
+}
+
 export async function existsByNameAndCity(
   name: string,
   city: string,
@@ -207,96 +231,84 @@ export async function existsByNameAndCity(
   return Boolean(rows?.length);
 }
 
-export async function createUnique(data: Record<string, unknown>) {
-  const isDuplicate = await findDuplicate(data);
-  if (isDuplicate) return { lead: null, created: false };
+/** Mesma busca de existsByNameAndCity, mas devolve o lead (pra poder adotá-lo numa campanha). */
+export async function findByNameAndCity(name: string, city: string): Promise<DuplicateLead | null> {
+  const supabase = getSupabase();
+  const { data: rows } = await supabase
+    .from("leads")
+    .select("id, name, prospecting_campaign_id")
+    .ilike("name", name.trim().toLowerCase())
+    .ilike("city", city.trim().toLowerCase())
+    .limit(1);
+  return (rows?.[0] as DuplicateLead | undefined) ?? null;
+}
+
+/**
+ * Uma captura com campanha de destino achou um lead repetido: se ele está solto, vai pro painel
+ * da campanha ("adopted"); se já está nela ("already") ou em outra ("other"), fica como está.
+ */
+export async function adoptDuplicate(
+  duplicate: DuplicateLead,
+  campaignId: string,
+): Promise<"adopted" | "already" | "other"> {
+  if (duplicate.prospecting_campaign_id === campaignId) return "already";
+  if (duplicate.prospecting_campaign_id) return "other";
+  return (await claimForCampaign(duplicate.id, campaignId)) ? "adopted" : "other";
+}
+
+/** O lead que já existe e bloqueou uma criação (id e campanha, pra decidir se dá pra adotar). */
+export interface DuplicateLead {
+  id: string;
+  name: string | null;
+  prospecting_campaign_id: string | null;
+}
+
+export type CreateUniqueResult =
+  | { lead: DuplicateLead; created: false }
+  | { lead: Record<string, any>; created: true };
+
+/** Cria o lead, a não ser que já exista um igual — nesse caso devolve o existente (`created: false`). */
+export async function createUnique(data: Record<string, unknown>): Promise<CreateUniqueResult> {
+  const duplicate = await findDuplicate(data);
+  if (duplicate) return { lead: duplicate, created: false };
 
   const lead = await insertWithAvailableColumns(data);
   return { lead, created: true };
 }
 
-async function findDuplicate(data: Record<string, unknown>) {
+async function findDuplicate(data: Record<string, unknown>): Promise<DuplicateLead | null> {
   const supabase = getSupabase();
 
   const cnpj = normalize(data.cnpj);
   const instagramUrl = normalize(data.instagram_url ?? data.instagram);
   const ifoodUrl = normalize(data.ifood_url);
-  const whatsapp = onlyDigits(data.whatsapp ?? data.phone);
+  const whatsapp = nationalDigits(data.whatsapp ?? data.phone);
   const name = normalize(data.name ?? data.company_name ?? data.companyName);
   const address = normalize(data.address);
 
-  // Busca no banco por cada campo único separadamente (evita carregar tudo em memória)
-  const checks: Promise<boolean>[] = [];
+  // Busca no banco por cada campo único separadamente (evita carregar tudo em memória).
+  // A ordem abaixo é a prioridade de qual duplicado é devolvido.
+  const checks: PromiseLike<DuplicateLead | null>[] = [];
+  const first = (query: PromiseLike<{ data: unknown }>) =>
+    Promise.resolve(query).then(({ data: rows }) => ((rows as DuplicateLead[] | null)?.[0] ?? null));
+  const select = () => supabase.from("leads").select("id, name, prospecting_campaign_id");
 
-  if (cnpj) {
-    checks.push(
-      supabase
-        .from("leads")
-        .select("id")
-        .ilike("cnpj", cnpj)
-        .limit(1)
-        .then(({ data: rows }) => Boolean(rows?.length)),
-    );
-  }
+  if (cnpj) checks.push(first(select().ilike("cnpj", cnpj).limit(1)));
 
   if (instagramUrl) {
     // Tenta as duas variações de coluna usadas no banco
-    checks.push(
-      supabase
-        .from("leads")
-        .select("id")
-        .ilike("instagram_url", instagramUrl)
-        .limit(1)
-        .then(({ data: rows }) => Boolean(rows?.length)),
-    );
-    checks.push(
-      supabase
-        .from("leads")
-        .select("id")
-        .ilike("instagram", instagramUrl)
-        .limit(1)
-        .then(({ data: rows }) => Boolean(rows?.length)),
-    );
+    checks.push(first(select().ilike("instagram_url", instagramUrl).limit(1)));
+    checks.push(first(select().ilike("instagram", instagramUrl).limit(1)));
   }
 
-  if (ifoodUrl) {
-    checks.push(
-      supabase
-        .from("leads")
-        .select("id")
-        .ilike("ifood_url", ifoodUrl)
-        .limit(1)
-        .then(({ data: rows }) => Boolean(rows?.length)),
-    );
-  }
-
-  if (whatsapp) {
-    checks.push(
-      supabase
-        .from("leads")
-        .select("id")
-        .ilike("whatsapp", `%${whatsapp}%`)
-        .limit(1)
-        .then(({ data: rows }) => Boolean(rows?.length)),
-    );
-  }
-
-  if (name && address) {
-    checks.push(
-      supabase
-        .from("leads")
-        .select("id")
-        .ilike("name", name)
-        .ilike("address", address)
-        .limit(1)
-        .then(({ data: rows }) => Boolean(rows?.length)),
-    );
-  }
+  if (ifoodUrl) checks.push(first(select().ilike("ifood_url", ifoodUrl).limit(1)));
+  if (whatsapp) checks.push(first(select().ilike("whatsapp", `%${whatsapp}%`).limit(1)));
+  if (name && address) checks.push(first(select().ilike("name", name).ilike("address", address).limit(1)));
 
   if (checks.length === 0) return null;
 
   const results = await Promise.all(checks);
-  return results.some(Boolean) ? true : null;
+  return results.find(Boolean) ?? null;
 }
 
 async function insertWithAvailableColumns(payload: Record<string, unknown>) {
@@ -332,6 +344,12 @@ function normalize(value: unknown) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
-function onlyDigits(value: unknown) {
-  return typeof value === "string" ? value.replace(/\D/g, "") : "";
+/**
+ * Dígitos do telefone sem o código do país (55). Leads antigos foram gravados sem
+ * DDI e os novos em E.164 (+55...); comparar pelo número nacional faz os dois se
+ * reconhecerem como duplicados.
+ */
+function nationalDigits(value: unknown) {
+  const digits = typeof value === "string" ? value.replace(/\D/g, "") : "";
+  return digits.length > 11 && digits.startsWith("55") ? digits.slice(2) : digits;
 }

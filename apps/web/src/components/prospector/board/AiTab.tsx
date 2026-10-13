@@ -261,7 +261,7 @@ export function AiTab({ campaign }: { campaign: ProspectingCampaign }) {
       updateCampaign(campaign.id, { ai_config: { ...aiConfig, ...patch } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", campaign.id] });
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["prospecting-campaigns"] });
     },
     onError: (error: Error) => toast.error(error.message),
   });

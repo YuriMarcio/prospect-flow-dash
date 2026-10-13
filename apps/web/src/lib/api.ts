@@ -12,6 +12,8 @@ export interface CreateCampaignInput {
   city: string;
   neighborhood?: string;
   quantity: number;
+  /** Campanha de prospecção (painel) que recebe os leads capturados; sem ela vão pro Kanban geral. */
+  prospectingCampaignId?: string | null;
 }
 
 export interface DashboardData {
@@ -145,7 +147,7 @@ function normalizeCampaign(campaign: ApiCampaign): Capture {
   };
 }
 
-function normalizeLead(lead: ApiLead): Lead {
+export function normalizeLead(lead: ApiLead): Lead {
   const leadStatus = status(lead.status);
   const columnId = text(lead.columnId, text(lead.column_id, ""));
 
@@ -188,6 +190,9 @@ function normalizeLead(lead: ApiLead): Lead {
       : undefined) as Lead["prospectingChannel"],
     meetingAt: typeof lead.meeting_at === "string" ? lead.meeting_at : undefined,
     meetingNotes: text(lead.meeting_notes, undefined),
+    source: text(lead.source, undefined),
+    prospectingCampaignId: typeof lead.prospecting_campaign_id === "string" ? lead.prospecting_campaign_id : null,
+    notes: text(lead.notes, undefined),
   };
 }
 
@@ -323,6 +328,14 @@ export async function updateLead(id: string, patch: Partial<Lead>) {
   if (patch.prospectingChannel !== undefined) body.prospecting_channel = patch.prospectingChannel;
   if (patch.meetingAt !== undefined) body.meeting_at = patch.meetingAt || null;
   if (patch.meetingNotes !== undefined) body.meeting_notes = patch.meetingNotes || null;
+  // Dados de contato (edição do lead): a API normaliza WhatsApp e Instagram e recusa valor inválido
+  if (patch.companyName !== undefined) body.name = patch.companyName;
+  if (patch.phone !== undefined) body.whatsapp = patch.phone;
+  if (patch.instagram !== undefined) body.instagram = patch.instagram;
+  if (patch.city !== undefined) body.city = patch.city;
+  if (patch.category !== undefined) body.category = patch.category;
+  if (patch.address !== undefined) body.address = patch.address;
+  if (patch.notes !== undefined) body.notes = patch.notes;
 
   const lead = await request<ApiLead>(`/leads/${id}`, {
     method: "PATCH",
@@ -330,6 +343,29 @@ export async function updateLead(id: string, patch: Partial<Lead>) {
   });
 
   return normalizeLead(lead);
+}
+
+export interface CreateLeadInput {
+  name: string;
+  whatsapp?: string;
+  instagram?: string;
+  city?: string;
+  category?: string;
+  address?: string;
+  notes?: string;
+  /** Painel (campanha de prospecção) que recebe o lead; sem ele fica no Kanban geral. */
+  prospectingCampaignId?: string | null;
+  columnId?: string;
+  status?: LeadStatus;
+}
+
+/**
+ * Cadastro manual. `adopted` = o lead já existia solto e foi só colocado na campanha.
+ * Repetido de verdade vira erro 409 com a mensagem pronta pra mostrar.
+ */
+export async function createLead(input: CreateLeadInput): Promise<{ lead: Lead; adopted: boolean }> {
+  const row = await request<ApiLead>("/leads", { method: "POST", body: JSON.stringify(input) });
+  return { lead: normalizeLead(row), adopted: row.adopted === true };
 }
 
 export async function deduplicateLeads(): Promise<{ removed: number }> {
@@ -345,6 +381,7 @@ export async function createIfoodCampaign(input: {
   city: string;
   zipCode: string;
   quantity: number;
+  prospectingCampaignId?: string | null;
 }): Promise<Capture> {
   const campaign = await request<ApiCampaign>("/campaigns/campaignifood", {
     method: "POST",
@@ -360,6 +397,7 @@ export async function getInstaDeliveryCities(): Promise<string[]> {
 export async function createInstaDeliveryCampaign(input: {
   city: string;
   quantity: number;
+  prospectingCampaignId?: string | null;
 }): Promise<Capture> {
   const campaign = await request<ApiCampaign>("/campaigns/campaigninstadelivery", {
     method: "POST",
@@ -367,6 +405,7 @@ export async function createInstaDeliveryCampaign(input: {
       city: input.city,
       quantity: input.quantity,
       category: "Delivery",
+      prospectingCampaignId: input.prospectingCampaignId,
     }),
   });
   return normalizeCampaign(campaign);

@@ -1,4 +1,5 @@
-import { request } from "@/lib/api";
+import { normalizeLead, request } from "@/lib/api";
+import type { Lead } from "@/types";
 
 export interface InstanceStatus {
   connected: boolean;
@@ -22,11 +23,18 @@ export interface CampaignStatus {
   hasFlow: boolean;
   followupCount: number;
   warmingDone: boolean;
-  filters: { cities: string[]; segments: string[] };
+  filters: CampaignFilters;
   sessionMode: "until_done" | "custom" | null;
   sessionStartAt: string | null;
   sessionEndAt: string | null;
   forecast: CampaignForecast;
+}
+
+/** `autoFill` liga o preenchimento automático da fila por cidade/segmento; desligado (padrão) o bot só fala com quem você enviar. */
+export interface CampaignFilters {
+  cities: string[];
+  segments: string[];
+  autoFill?: boolean;
 }
 
 export interface CampaignAiConfig {
@@ -62,7 +70,7 @@ export interface ProspectingCampaign {
   created_by_user_id: string;
   region: string | null;
   segment: string | null;
-  filters: { cities: string[]; segments: string[] };
+  filters: CampaignFilters;
   schedule: Schedule;
   window_start: string;
   window_end: string;
@@ -141,7 +149,7 @@ export async function createCampaign(input: {
   ownerUserId: string;
   region?: string | null;
   segment?: string | null;
-  filters?: { cities: string[]; segments: string[] };
+  filters?: CampaignFilters;
   schedule?: Schedule;
   windowStart?: string;
   windowEnd?: string;
@@ -193,9 +201,66 @@ export async function stopCampaignSession(id: string): Promise<ProspectingCampai
   return request(`/prospecting-campaigns/${id}/session/stop`, { method: "POST" });
 }
 
-/** Remove o vínculo de todos os leads da campanha e cancela envios pendentes. */
+/** Cancela os envios pendentes (fila e agenda). Os leads continuam na campanha. */
 export async function clearCampaignLeads(id: string): Promise<{ ok: boolean }> {
   return request(`/prospecting-campaigns/${id}/leads/clear`, { method: "POST" });
+}
+
+// ─── Painel de leads da campanha (território) ─────────────────────────────────
+
+/** Situação do lead no bot: sem contato · agendado (dia) · na fila hoje · contatado · respondeu · falhou. */
+export type LeadBotStatus = "none" | "planned" | "queued" | "sent" | "replied" | "failed";
+
+export interface CampaignLead extends Lead {
+  bot: { status: LeadBotStatus; date: string | null };
+}
+
+export async function listCampaignLeads(id: string): Promise<CampaignLead[]> {
+  const rows = await request<Array<Record<string, unknown>>>(`/prospecting-campaigns/${id}/leads`);
+  return rows.map((row) => ({
+    ...normalizeLead(row),
+    bot: (row.bot as CampaignLead["bot"] | undefined) ?? { status: "none", date: null },
+  }));
+}
+
+export interface SkippedLead {
+  leadId: string;
+  reason: string;
+}
+
+/** Põe no painel da campanha leads que estavam soltos no Kanban geral. */
+export async function addLeadsToCampaign(
+  id: string,
+  leadIds: string[],
+): Promise<{ added: number; skipped: SkippedLead[] }> {
+  return request(`/prospecting-campaigns/${id}/leads`, {
+    method: "POST",
+    body: JSON.stringify({ leadIds }),
+  });
+}
+
+/** Tira o lead da campanha (volta pro Kanban geral) e cancela o envio pendente dele. */
+export async function removeLeadFromCampaign(id: string, leadId: string): Promise<void> {
+  await request(`/prospecting-campaigns/${id}/leads/${leadId}`, { method: "DELETE" });
+}
+
+export interface DispatchResult {
+  /** Entraram na fila de hoje. */
+  queuedToday: number;
+  /** Não couberam hoje (limite ou janela) ou foram pedidos pra outro dia. */
+  planned: { date: string; count: number }[];
+  skipped: SkippedLead[];
+}
+
+/** Manda o bot falar só com os leads escolhidos — hoje ou num dia futuro (`date` = YYYY-MM-DD). */
+export async function dispatchLeads(
+  id: string,
+  input: { leadIds: string[]; date?: string },
+): Promise<DispatchResult> {
+  return request(`/prospecting-campaigns/${id}/dispatch`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export interface CampaignMetrics {

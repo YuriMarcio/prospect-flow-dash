@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -15,6 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { createInstaDeliveryCampaign, getInstaDeliveryCities } from "@/lib/api";
 import { Field } from "./Field";
+import { CaptureDestinationField } from "./CaptureDestinationField";
+import { NO_DESTINATION, resolveDestination } from "./captureDestination";
 
 const instaDeliverySchema = z.object({
   city: z.string().min(1, "Selecione uma cidade"),
@@ -27,12 +30,16 @@ export function InstaDeliveryFormDialog({
   open,
   onOpenChange,
   anyRunning,
+  campaignId,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   anyRunning: boolean;
+  /** Painel que recebe os leads (aberto de dentro de uma campanha); sem ele o usuário escolhe. */
+  campaignId?: string | null;
 }) {
   const queryClient = useQueryClient();
+  const [destination, setDestination] = useState(NO_DESTINATION);
 
   const citiesQuery = useQuery({
     queryKey: ["instadelivery-cities"],
@@ -46,13 +53,17 @@ export function InstaDeliveryFormDialog({
   });
 
   const mutation = useMutation({
-    mutationFn: (data: InstaDeliveryFormData) => createInstaDeliveryCampaign(data),
+    mutationFn: (data: InstaDeliveryFormData) =>
+      createInstaDeliveryCampaign({ ...data, prospectingCampaignId: resolveDestination(campaignId, destination) }),
     onSuccess: (campaign) => {
       toast.success("Captura InstaDelivery iniciada!", {
         description: `${campaign.city} • até ${campaign.quantity} lojas`,
       });
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["captures"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      setDestination(NO_DESTINATION);
       form.reset({ city: "", quantity: 50 });
       onOpenChange(false);
     },
@@ -89,6 +100,8 @@ export function InstaDeliveryFormDialog({
               <Input type="number" min={1} max={200} {...form.register("quantity")} />
             </Field>
           </div>
+
+          <CaptureDestinationField value={destination} onChange={setDestination} fixedCampaignId={campaignId} />
 
           {mutation.isError && (
             <p className="text-sm text-destructive">Erro ao iniciar captura. Tente novamente.</p>

@@ -25,6 +25,7 @@ export async function runInstaDeliveryScraping(
   campaignId: string,
   cityName: string,
   quantity: number,
+  prospectingCampaignId?: string,  // painel (campanha de prospecção) que recebe os leads; sem ele vão pro Kanban geral
 ) {
   const citySlug = toSlug(cityName);
 
@@ -102,11 +103,16 @@ export async function runInstaDeliveryScraping(
       processed++;
       try {
         // Verifica duplicata pelo nome+cidade antes de acessar a página (evita visitas desnecessárias)
-        const alreadyExists = await leadsRepository.existsByNameAndCity(store.name, cityName);
-        if (alreadyExists) {
+        // Repetido: se solto e há campanha de destino, é adotado por ela; senão é pulado como sempre.
+        const existing = await leadsRepository.findByNameAndCity(store.name, cityName);
+        if (existing) {
+          const outcome = prospectingCampaignId
+            ? await leadsRepository.adoptDuplicate(existing, prospectingCampaignId)
+            : "other";
+          if (outcome === "adopted") found++;
           await logsRepository.create(
             campaignId,
-            `[${processed}/${limit}] ${store.name} | PULANDO (já existe no banco)`,
+            `[${processed}/${limit}] ${store.name} | ${outcome === "adopted" ? "ADOTADO (já existia, agora está na campanha)" : "PULANDO (já existe no banco)"}`,
             "info",
           );
           await campaignsRepository.updateStats(campaignId, { processed, found });
@@ -132,7 +138,7 @@ export async function runInstaDeliveryScraping(
 
         const whatsapp = waHref ? parseWhatsApp(waHref) : null;
 
-        const { created } = await leadsRepository.createUnique({
+        const saved = await leadsRepository.createUnique({
           campaign_id: campaignId,
           name: store.name,
           whatsapp: whatsapp ?? undefined,
@@ -140,13 +146,20 @@ export async function runInstaDeliveryScraping(
           category: "Delivery",
           source: "instadelivery",
           delivery_link: store.url,
+          ...(prospectingCampaignId ? { prospecting_campaign_id: prospectingCampaignId } : {}),
         });
 
-        if (created) found++;
+        let outcomeLabel = saved.created ? "SALVO" : "DUPLICADO";
+        if (saved.created) {
+          found++;
+        } else if (prospectingCampaignId && (await leadsRepository.adoptDuplicate(saved.lead, prospectingCampaignId)) === "adopted") {
+          found++;
+          outcomeLabel = "ADOTADO (já existia, agora está na campanha)";
+        }
 
         await logsRepository.create(
           campaignId,
-          `[${processed}/${limit}] ${store.name} | WA: ${whatsapp ?? "—"} | ${created ? "SALVO" : "DUPLICADO"}`,
+          `[${processed}/${limit}] ${store.name} | WA: ${whatsapp ?? "—"} | ${outcomeLabel}`,
           "info",
         );
 

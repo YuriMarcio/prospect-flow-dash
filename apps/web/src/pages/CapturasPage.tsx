@@ -129,7 +129,7 @@ function NewCampaignDialog({
   const mutation = useMutation({
     mutationFn: createCampaign,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["captures"] });
       onOpenChange(false);
       setCategory(""); setCity(""); setNeighborhood(""); setQuantity("100");
     },
@@ -197,7 +197,7 @@ function NewCampaignDialog({
 export function CapturasPage() {
   const queryClient = useQueryClient();
   const campaignsQuery = useQuery({
-    queryKey: ["campaigns"],
+    queryKey: ["captures"],
     queryFn: listCampaigns,
     retry: 1,
     // Polling automático enquanto houver captura rodando
@@ -215,7 +215,7 @@ export function CapturasPage() {
 
   const stopMutation = useMutation({
     mutationFn: stopCampaign,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaigns"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["captures"] }),
   });
 
   const [expandedId, setExpandedId] = useState<string | null>(null);

@@ -20,6 +20,11 @@ export async function createCampaignController(
   return reply.status(201).send(result);
 }
 
+/** Erros de regra (ex.: campanha de destino inexistente) viram 400 com a mensagem, que a tela mostra. */
+function replyError(error: unknown, reply: FastifyReply) {
+  return reply.status(400).send({ error: error instanceof Error ? error.message : String(error) });
+}
+
 export async function campaignleadsearchController(
   // Added Body definition here
   request: FastifyRequest<{ 
@@ -30,8 +35,12 @@ export async function campaignleadsearchController(
 ) {
   // TypeScript now knows request.body is Record<string, unknown>
   console.log("Received campaign lead search request with body:", request.body);
-  const result = await campaignleadsearchService(request.body);
-  return reply.status(201).send(result);
+  try {
+    const result = await campaignleadsearchService(request.body);
+    return reply.status(201).send(result);
+  } catch (error) {
+    return replyError(error, reply);
+  }
 }
 
 export async function campaignleadsearchinstaController(
@@ -52,16 +61,24 @@ export async function campaignInstaDeliveryController(
   request: FastifyRequest<{ Body: Record<string, unknown> }>,
   reply: FastifyReply,
 ) {
-  const result = await campaignInstaDeliverySearchService(request.body);
-  return reply.status(201).send(result);
+  try {
+    const result = await campaignInstaDeliverySearchService(request.body);
+    return reply.status(201).send(result);
+  } catch (error) {
+    return replyError(error, reply);
+  }
 }
 
 export async function campaignIfoodController(
   request: FastifyRequest<{ Body: Record<string, unknown> }>,
   reply: FastifyReply,
 ) {
-  const result = await campaignIfoodSearchService(request.body);
-  return reply.status(201).send(result);
+  try {
+    const result = await campaignIfoodSearchService(request.body);
+    return reply.status(201).send(result);
+  } catch (error) {
+    return replyError(error, reply);
+  }
 }
 
 export async function listCampaignsController(

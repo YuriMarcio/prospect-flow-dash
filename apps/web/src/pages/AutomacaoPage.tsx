@@ -30,7 +30,7 @@ export function AutomacaoPage() {
   const [viewMode, setViewMode] = useState<"cards" | "list">("cards");
 
   const campaignsQuery = useQuery({
-    queryKey: ["campaigns"],
+    queryKey: ["captures"],
     queryFn: listCampaigns,
     refetchInterval: (q) => {
       const data = q.state.data as Capture[] | undefined;

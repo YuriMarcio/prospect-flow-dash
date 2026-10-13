@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
@@ -15,6 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { createCampaign } from "@/lib/api";
 import { Field } from "./Field";
+import { CaptureDestinationField } from "./CaptureDestinationField";
+import { NO_DESTINATION, resolveDestination } from "./captureDestination";
 
 const CATEGORIES = [
   // Alimentação
@@ -136,17 +139,29 @@ export function InstagramFormDialog({
   open,
   onOpenChange,
   anyRunning,
+  campaignId,
+  defaultCity,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   anyRunning: boolean;
+  /** Painel que recebe os leads (aberto de dentro de uma campanha); sem ele o usuário escolhe. */
+  campaignId?: string | null;
+  /** Cidade já preenchida — o território da campanha, quando aberto de dentro dela. */
+  defaultCity?: string;
 }) {
   const queryClient = useQueryClient();
+  const [destination, setDestination] = useState(NO_DESTINATION);
 
   const form = useForm<InstagramFormData>({
     resolver: zodResolver(instagramSchema),
-    defaultValues: { category: "", city: "", neighborhood: "", quantity: 100 },
+    defaultValues: { category: "", city: defaultCity ?? "", neighborhood: "", quantity: 100 },
   });
+
+  // Aberto de dentro de uma campanha, a cidade já vem com o território dela
+  useEffect(() => {
+    if (open && defaultCity) form.setValue("city", defaultCity);
+  }, [open, defaultCity, form]);
 
   const [category, city, neighborhood] = useWatch({
     control: form.control,
@@ -154,14 +169,18 @@ export function InstagramFormDialog({
   });
 
   const mutation = useMutation({
-    mutationFn: (data: InstagramFormData) => createCampaign(data),
+    mutationFn: (data: InstagramFormData) =>
+      createCampaign({ ...data, prospectingCampaignId: resolveDestination(campaignId, destination) }),
     onSuccess: (campaign) => {
       toast.success("Captura iniciada!", {
         description: `${campaign.category} em ${campaign.city} • ${campaign.quantity} leads`,
       });
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["captures"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      form.reset({ category: "", city: "", neighborhood: "", quantity: 100 });
+      queryClient.invalidateQueries({ queryKey: ["campaign-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      setDestination(NO_DESTINATION);
+      form.reset({ category: "", city: defaultCity ?? "", neighborhood: "", quantity: 100 });
       onOpenChange(false);
     },
     onError: (error) => {
@@ -207,6 +226,8 @@ export function InstagramFormDialog({
           </div>
 
           <SearchPreview category={category} city={city} neighborhood={neighborhood} />
+
+          <CaptureDestinationField value={destination} onChange={setDestination} fixedCampaignId={campaignId} />
 
           {mutation.isError && (
             <p className="text-sm text-destructive">Erro ao iniciar captura. Tente novamente.</p>

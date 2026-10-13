@@ -11,6 +11,10 @@ import {
   stopCampaignSessionController,
   clearCampaignLeadsController,
   getCampaignMetricsController,
+  listCampaignLeadsController,
+  addLeadsToCampaignController,
+  removeLeadFromCampaignController,
+  dispatchLeadsController,
 } from "./prospecting-campaigns.controller";
 import {
   getFlowController,
@@ -34,6 +38,12 @@ export async function prospectingCampaignsRoutes(app: FastifyInstance) {
   app.post("/:id/session/start", startCampaignSessionController);
   app.post("/:id/session/stop", stopCampaignSessionController);
   app.post("/:id/leads/clear", clearCampaignLeadsController);
+
+  // Painel de leads da campanha (território): listar, adicionar, remover e mandar o bot só pros escolhidos
+  app.get("/:id/leads", listCampaignLeadsController);
+  app.post("/:id/leads", addLeadsToCampaignController);
+  app.delete("/:id/leads/:leadId", removeLeadFromCampaignController);
+  app.post("/:id/dispatch", dispatchLeadsController);
 
   // Fluxo de mensagens (Visual Flow Builder)
   app.get("/:id/flow", getFlowController);

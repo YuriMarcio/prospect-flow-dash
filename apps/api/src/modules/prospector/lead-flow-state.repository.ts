@@ -117,6 +117,18 @@ export async function stopAllForCampaign(campaignId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Para o fluxo de um único lead (ex.: ele foi removido da campanha). */
+export async function stopForLead(leadId: string, campaignId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("lead_flow_states")
+    .update({ status: "stopped", updated_at: new Date().toISOString() })
+    .eq("lead_id", leadId)
+    .eq("prospecting_campaign_id", campaignId)
+    .in("status", ["active", "waiting_dispatch", "waiting_timer", "processing"]);
+  if (error) throw new Error(error.message);
+}
+
 export async function countByStatus(campaignId: string, status: LeadFlowStatus): Promise<number> {
   const supabase = getSupabase();
   const { count, error } = await supabase

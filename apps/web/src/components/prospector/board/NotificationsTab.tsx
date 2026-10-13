@@ -34,7 +34,7 @@ export function NotificationsTab({ campaign }: { campaign: ProspectingCampaign }
     mutationFn: () => updateCampaign(campaign.id, { notification_config: config }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", campaign.id] });
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["prospecting-campaigns"] });
       toast.success("Notificações salvas.");
     },
     onError: (error: Error) => toast.error(error.message),
