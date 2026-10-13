@@ -27,6 +27,9 @@ import { buildTodayQueueForAllCampaigns } from "./workers/prospector/queue-build
 import { runSessionTick } from "./workers/prospector/session.worker";
 import { runFlowTick } from "./workers/prospector/flow-engine";
 import { runMorningReminder, runEveningReminder } from "./workers/goals/reminder.worker";
+import { runTaskReminderTick } from "./workers/goals/push-reminders.worker";
+import { pushRoutes } from "./modules/push/push.routes";
+import { isPushConfigured } from "./lib/webpush";
 
 const app = Fastify({
   logger: true,
@@ -132,6 +135,7 @@ async function bootstrap() {
     await app.register(objectivesRoutes, { prefix: "/objectives" });
     await app.register(objectivePlanningRoutes, { prefix: "/objective-planning" });
     await app.register(workspacePlanningRoutes, { prefix: "/workspace-planning" });
+    await app.register(pushRoutes, { prefix: "/push" });
 
     // 5. Iniciando o servidor
     // O host "0.0.0.0" é importante se for rodar em Docker ou cloud depois
@@ -144,6 +148,8 @@ async function bootstrap() {
     setupProspectorScheduler();
     // 7. Lembretes de objetivos no WhatsApp: manhã (08:00) e fim de tarde (18:00)
     setupGoalsScheduler();
+    // 8. Notificações push do PWA (tarefas do dia, vencendo, metas) — precisa das chaves VAPID
+    setupPushReminderScheduler();
   } catch (err) {
     app.log.error(err);
     process.exit(1);
@@ -189,6 +195,19 @@ function setupGoalsScheduler() {
       runEveningReminder().catch((err) => app.log.error({ err }, "[GOALS] Falha no lembrete da tarde"));
     }
   }, 60_000);
+}
+
+function setupPushReminderScheduler() {
+  if (!isPushConfigured()) {
+    app.log.warn("[PUSH] VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY não configuradas — notificações push desativadas.");
+    return;
+  }
+
+  // As janelas de horário ficam em task-reminders.ts; o ciclo só precisa cair dentro delas.
+  const tick = () =>
+    runTaskReminderTick().catch((err) => app.log.error({ err }, "[PUSH] Falha no ciclo de lembretes de tarefas"));
+  setInterval(tick, 5 * 60_000);
+  tick();
 }
 
 // Executando a inicialização

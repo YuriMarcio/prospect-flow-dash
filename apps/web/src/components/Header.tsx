@@ -6,6 +6,7 @@ import { useMobileSidebarStore } from "@/store/mobileSidebar";
 import { useLeadModalStore } from "@/store/leadModal";
 import { useAuthStore } from "@/store/auth";
 import { logout } from "@/lib/api";
+import { detachDevice } from "@/lib/push";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -35,6 +36,8 @@ export function Header() {
 
   async function handleLogout() {
     try {
+      // Antes do logout: depois dele a sessão deixa de valer e o servidor recusaria soltar o aparelho.
+      await detachDevice();
       await logout();
     } finally {
       clearAuth();

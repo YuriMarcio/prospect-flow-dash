@@ -67,6 +67,24 @@ Ao fim de cada captura o log mostra um resumo com os créditos gastos por lead v
 
 Para guardar os candidatos que ficaram em dúvida (fila técnica) e os dados do Google Meu Negócio, rode uma vez o arquivo `apps/api/migrations/2026-10-13-discovery-sources.sql` no SQL Editor do Supabase. O sistema funciona sem ele, só não grava esses extras.
 
+### Notificações de tarefas no celular/PWA (opcional)
+
+O sistema avisa das tarefas pelo app instalado (PWA): o que vence hoje e o que está atrasado (manhã), sprint terminando, o que vence amanhã (tarde) e o que falta para fechar o dia (fim do dia). Para ligar:
+
+1. Rode uma vez o arquivo `apps/api/migrations/2026-10-13-push-notifications.sql` no SQL Editor do Supabase.
+2. Gere um par de chaves com `npx web-push generate-vapid-keys` e acrescente no `apps/api/.env` (na VPS, no `.env.docker`) e reinicie a API:
+
+```
+VAPID_PUBLIC_KEY=cole_aqui_a_chave_publica
+VAPID_PRIVATE_KEY=cole_aqui_a_chave_privada
+VAPID_SUBJECT=mailto:seu-email@exemplo.com    # opcional; sem ele usa o primeiro https de WEB_ORIGIN
+APP_TIMEZONE=America/Sao_Paulo                # opcional; fuso dos horários dos avisos
+```
+
+3. Em **Configurações → Alertas de tarefas**, ative neste aparelho (no app instalado o sistema também convida a ativar). No iPhone/iPad só funciona com o app instalado na Tela de Início.
+
+Guarde as chaves: se trocar o par, cada aparelho precisa abrir o app uma vez para se reinscrever. Sem as chaves a API sobe normalmente, só deixa as notificações desligadas.
+
 ---
 
 ## ❌ Para encerrar o sistema

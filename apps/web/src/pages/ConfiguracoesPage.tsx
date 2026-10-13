@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { PushNotificationsCard } from "@/components/PushNotificationsCard";
 import { getMe, updateProfile } from "@/lib/api";
 
 export function ConfiguracoesPage() {
@@ -89,6 +90,8 @@ export function ConfiguracoesPage() {
           <Switch checked={theme === "dark"} onCheckedChange={toggle} />
         </div>
       </section>
+
+      <PushNotificationsCard />
 
       <section className="rounded-xl border border-border bg-card p-6 space-y-4">
         <h2 className="text-sm font-semibold">Notificações</h2>

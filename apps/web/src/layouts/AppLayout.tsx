@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { MobileSidebar } from "@/components/MobileSidebar";
 import { Header } from "@/components/Header";
+import { PushBootstrap } from "@/components/PushBootstrap";
 import { useThemeStore } from "@/store/theme";
 import { usePwaInstallStore } from "@/store/pwaInstall";
 
@@ -31,6 +32,7 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden w-full bg-background text-foreground">
+      <PushBootstrap />
       <Sidebar />
       <MobileSidebar />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
