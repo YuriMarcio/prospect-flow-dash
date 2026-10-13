@@ -7,11 +7,17 @@ type ApiLead = Record<string, unknown>;
 type ApiCampaign = Record<string, unknown>;
 type ApiLog = Record<string, unknown>;
 
+export type DiscoverySource = "instagram" | "maps";
+
 export interface CreateCampaignInput {
   category: string;
   city: string;
+  /** UF da cidade (ex.: "MA"): desambigua cidades homônimas e valida o endereço do Google Meu Negócio. */
+  state?: string;
   neighborhood?: string;
   quantity: number;
+  /** Onde buscar; sem isso a API usa só o Instagram. */
+  sources?: DiscoverySource[];
   /** Campanha de prospecção (painel) que recebe os leads capturados; sem ela vão pro Kanban geral. */
   prospectingCampaignId?: string | null;
 }
@@ -98,6 +104,12 @@ function captureStatus(value: unknown): Capture["status"] {
   return "queued";
 }
 
+function completionReason(value: unknown): Capture["completionReason"] {
+  return value === "goal_reached" || value === "sources_exhausted" || value === "budget_exhausted"
+    ? value
+    : undefined;
+}
+
 function formatDate(value: unknown) {
   const date = typeof value === "string" ? new Date(value) : null;
   if (!date || Number.isNaN(date.getTime())) return "—";
@@ -137,6 +149,7 @@ function normalizeCampaign(campaign: ApiCampaign): Capture {
     delay: number(campaign.delay, 0),
     limit: number(campaign.limit, quantity),
     status,
+    completionReason: completionReason(campaign.completion_reason),
     processed,
     found: number(campaign.found, number(campaign.found_count, 0)),
     errors: number(campaign.errors, number(campaign.error_count, 0)),

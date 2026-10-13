@@ -243,6 +243,21 @@ export async function findByNameAndCity(name: string, city: string): Promise<Dup
   return (rows?.[0] as DuplicateLead | undefined) ?? null;
 }
 
+/** Lead que já usa esse perfil do Instagram (URL canônica), nas duas colunas em uso no banco. */
+export async function findByInstagram(instagramUrl: string): Promise<DuplicateLead | null> {
+  const supabase = getSupabase();
+  const url = instagramUrl.trim().toLowerCase();
+  if (!url) return null;
+
+  const lookup = (column: string) =>
+    Promise.resolve(
+      supabase.from("leads").select("id, name, prospecting_campaign_id").ilike(column, url).limit(1),
+    ).then(({ data: rows }) => (rows?.[0] as DuplicateLead | undefined) ?? null);
+
+  const [byUrl, byInstagram] = await Promise.all([lookup("instagram_url"), lookup("instagram")]);
+  return byUrl ?? byInstagram;
+}
+
 /**
  * Uma captura com campanha de destino achou um lead repetido: se ele está solto, vai pro painel
  * da campanha ("adopted"); se já está nela ("already") ou em outra ("other"), fica como está.
@@ -282,6 +297,7 @@ async function findDuplicate(data: Record<string, unknown>): Promise<DuplicateLe
   const cnpj = normalize(data.cnpj);
   const instagramUrl = normalize(data.instagram_url ?? data.instagram);
   const ifoodUrl = normalize(data.ifood_url);
+  const googlePlaceId = typeof data.google_place_id === "string" ? data.google_place_id.trim() : "";
   const whatsapp = nationalDigits(data.whatsapp ?? data.phone);
   const name = normalize(data.name ?? data.company_name ?? data.companyName);
   const address = normalize(data.address);
@@ -302,6 +318,8 @@ async function findDuplicate(data: Record<string, unknown>): Promise<DuplicateLe
   }
 
   if (ifoodUrl) checks.push(first(select().ilike("ifood_url", ifoodUrl).limit(1)));
+  // Coluna ausente (migration não aplicada) devolve erro sem dados: `first` trata como "não achou".
+  if (googlePlaceId) checks.push(first(select().eq("google_place_id", googlePlaceId).limit(1)));
   if (whatsapp) checks.push(first(select().ilike("whatsapp", `%${whatsapp}%`).limit(1)));
   if (name && address) checks.push(first(select().ilike("name", name).ilike("address", address).limit(1)));
 

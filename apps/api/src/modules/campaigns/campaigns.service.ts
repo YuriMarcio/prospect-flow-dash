@@ -1,6 +1,7 @@
 import * as campaignsRepository from "./campaigns.repository";
 import * as prospectingCampaignsRepository from "../prospecting-campaigns/prospecting-campaigns.repository";
-import { runInstagramDiscovery } from "../../workers/instagram/instagram.discovery.worker";
+import { runDiscovery } from "../../workers/discovery/discovery.worker";
+import type { DiscoveryInput, DiscoverySource } from "../../workers/discovery/run";
 import { runInstaDeliveryScraping } from "../../workers/instadelivery/instadelivery.worker";
 import { runIfoodScraping } from "../../workers/ifood/ifood.worker";
 import { cancel } from "../../lib/cancellation";
@@ -14,6 +15,32 @@ async function resolveDestination(data: Record<string, unknown>): Promise<string
   if (!id) return undefined;
   if (!(await prospectingCampaignsRepository.findById(id))) throw new Error("Campanha de destino não encontrada.");
   return id;
+}
+
+/**
+ * Fontes escolhidas na captura. Sem `sources` (clientes antigos, campanhas antigas reiniciadas)
+ * vale só o Instagram, como sempre foi: ninguém passa a gastar crédito de outra fonte por surpresa.
+ */
+function resolveSources(value: unknown): DiscoverySource[] {
+  const valid = Array.isArray(value)
+    ? value.filter((item): item is DiscoverySource => item === "instagram" || item === "maps")
+    : [];
+  return valid.length > 0 ? [...new Set(valid)] : ["instagram"];
+}
+
+/** Parâmetros da descoberta a partir do corpo da requisição (ou da campanha salva, ao reiniciar). */
+function discoveryInput(
+  data: Record<string, unknown>,
+  prospectingCampaignId?: string,
+): DiscoveryInput {
+  return {
+    category: data.category as string,
+    city: data.city as string,
+    state: typeof data.state === "string" ? data.state : null,
+    quantity: (data.quantity as number) ?? 100,
+    sources: resolveSources(data.sources),
+    prospectingCampaignId,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -56,13 +83,7 @@ export async function campaignleadsearchService(data: Record<string, unknown>) {
   }
 
   // Fire-and-forget: não aguarda — responde ao cliente imediatamente
-  runInstagramDiscovery(
-    campaign.id,
-    data.category as string,
-    data.city as string,
-    (data.quantity as number) ?? 100,
-    prospectingCampaignId,
-  ).catch(async (err) => {
+  runDiscovery(campaign.id, discoveryInput(data, prospectingCampaignId)).catch(async (err) => {
     console.error(`[SERVICE] Worker falhou para campanha ${campaign.id}:`, err);
     await campaignsRepository.updateStatus(campaign.id, "error").catch(() => {});
   });
@@ -83,13 +104,7 @@ export async function campaignInstagramSearchService(data: Record<string, unknow
   }
 
   // Fire-and-forget: não aguarda — responde ao cliente imediatamente
-  runInstagramDiscovery(
-    campaign.id,
-    data.category as string,
-    data.city as string,
-    (data.quantity as number) ?? 100,
-    prospectingCampaignId,
-  ).catch((err) =>
+  runDiscovery(campaign.id, discoveryInput(data, prospectingCampaignId)).catch((err) =>
     console.error(`[SERVICE] Worker falhou para campanha ${campaign.id}:`, err),
   );
 
@@ -177,12 +192,7 @@ export async function startCampaignService(id: string) {
   const updatedCampaign = await campaignsRepository.updateStatus(id, "running");
 
   // ✅ Worker agora realmente disparado — não mais comentado
-  runInstagramDiscovery(
-    id,
-    campaign.category as string,
-    campaign.city as string,
-    (campaign.quantity as number) ?? 100,
-  ).catch((err) =>
+  runDiscovery(id, discoveryInput(campaign as Record<string, unknown>)).catch((err) =>
     console.error(`[SERVICE] Worker falhou ao reiniciar campanha ${id}:`, err),
   );
 

@@ -51,6 +51,22 @@ SERP_API_KEY=cole_aqui_a_chave_da_serpapi
 
 Salve e rode o sistema normalmente.
 
+### Limites de gasto da Descoberta (opcional)
+
+Cada busca na SerpAPI e cada consulta de bio no ScrapeCreators gasta crédito. A Descoberta tem um limite por captura; se você não definir nada, valem os padrões abaixo. Para mudar, acrescente a linha no `apps/api/.env`:
+
+```
+DISCOVERY_MAX_SEARCH_REQUESTS=15    # buscas na SerpAPI (Instagram + Google Meu Negócio)
+DISCOVERY_MAX_PAGES_PER_QUERY=3     # páginas por busca; só avança enquanto a anterior rendeu
+DISCOVERY_MAX_LOOKUP_REQUESTS=20    # buscas do Instagram de um negócio pelo nome
+DISCOVERY_MAX_ENRICH_CALLS=25       # consultas de bio no ScrapeCreators
+DISCOVERY_SERP_NFPR=1               # 0 desliga o pedido para o Google não corrigir a busca
+```
+
+Ao fim de cada captura o log mostra um resumo com os créditos gastos por lead válido; use esse número para ajustar os limites.
+
+Para guardar os candidatos que ficaram em dúvida (fila técnica) e os dados do Google Meu Negócio, rode uma vez o arquivo `apps/api/migrations/2026-10-13-discovery-sources.sql` no SQL Editor do Supabase. O sistema funciona sem ele, só não grava esses extras.
+
 ---
 
 ## ❌ Para encerrar o sistema

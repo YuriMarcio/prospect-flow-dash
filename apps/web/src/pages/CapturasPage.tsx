@@ -16,6 +16,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Capture } from "@/types";
 
+const COMPLETION_LABEL: Record<NonNullable<Capture["completionReason"]>, string> = {
+  goal_reached: "Meta atingida",
+  sources_exhausted: "Fontes esgotadas",
+  budget_exhausted: "Limite de buscas atingido",
+};
+
 const CATEGORY_SUGGESTIONS = [
   "Restaurante", "Pizzaria", "Hamburgueria", "Pet Shop", "Barbearia",
   "Salão de Beleza", "Academia", "Farmácia", "Clínica", "Padaria",
@@ -350,6 +356,11 @@ export function CapturasPage() {
                         </button>
                       )}
                     </div>
+                    {capture.status === "done" && capture.completionReason && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {COMPLETION_LABEL[capture.completionReason]}
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-3 w-56">
                     <div className="flex items-center gap-2">

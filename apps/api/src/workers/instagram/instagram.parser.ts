@@ -46,19 +46,22 @@ export function extractWhatsappFromBio(
 ): string | null {
   for (const link of resolveAll(bioLinks, externalUrl)) {
     const m = link.match(/(?:wa\.me\/|api\.whatsapp\.com\/send\?phone=)([0-9]+)/);
-    if (m) return normalizeToE164(m[1]) ?? m[1];
+    const normalized = m ? normalizeToE164(m[1]) : null;
+    if (normalized) return normalized;
   }
 
   if (biography) {
     const waMatch = biography.match(/(?:wa\.me\/|api\.whatsapp\.com\/send\?phone=)([0-9]+)/);
-    if (waMatch) return normalizeToE164(waMatch[1]) ?? waMatch[1];
+    const waNormalized = waMatch ? normalizeToE164(waMatch[1]) : null;
+    if (waNormalized) return waNormalized;
 
     const phoneMatch = biography.match(
       /(?:(?:\+|00)?(55)\s?)?(?:\(?([1-9][0-9])\)?\s?)?(?:((?:9\d|[2-9])\d{3})[-\s]?(\d{4}))/,
     );
     if (phoneMatch) {
       const digits = `${phoneMatch[2] ?? ""}${phoneMatch[3]}${phoneMatch[4]}`;
-      return normalizeToE164(digits) ?? digits;
+      // Número que não vira E.164 válido (ex.: "78974341", sem DDD) não é WhatsApp: descarta.
+      return normalizeToE164(digits);
     }
   }
 
@@ -133,14 +136,14 @@ export function parseInstagramBio(bioText: string): ParsedBioData {
   // direto pra Evolution API, que precisa do código do país. Sem isso, "98980011001" (DDD+número)
   // seria lido como número de outro país e o lead cairia como "inválido no WhatsApp".
   if (waMatch) {
-    data.whatsapp = normalizeToE164(waMatch[1]) ?? waMatch[1];
+    data.whatsapp = normalizeToE164(waMatch[1]);
   } else {
     // Fallback: Busca números de telefone formatados no meio do texto do Brasil (ex: 11 99999-9999)
     const phoneMatch = bioText.match(/(?:(?:\+|00)?(55)\s?)?(?:\(?([1-9][0-9])\)?\s?)?(?:((?:9\d|[2-9])\d{3})\-?(\d{4}))/);
     if (phoneMatch) {
       // Junta o DDD e o número achado
       const digits = `${phoneMatch[2] || ""}${phoneMatch[3]}${phoneMatch[4]}`;
-      data.whatsapp = normalizeToE164(digits) ?? digits;
+      data.whatsapp = normalizeToE164(digits);
     }
   }
 

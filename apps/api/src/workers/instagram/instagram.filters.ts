@@ -1,4 +1,4 @@
-import { normalizeForMatch } from "../../lib/text";
+import { normalizeLoose } from "../../lib/text";
 
 // ---------------------------------------------------------------------------
 // URL DO PERFIL
@@ -40,6 +40,15 @@ export function parseProfileLink(link: string): ProfileLink | null {
   return { url: `https://www.instagram.com/${handle}/`, handle };
 }
 
+/** "Burger Kings SLZ (@burgerkingsslz) • Fotos e vídeos do Instagram" → "Burger Kings SLZ" */
+export function extractNameFromTitle(title: string): string {
+  return title
+    .split("(")[0]
+    .replace("- Instagram", "")
+    .replace("| Instagram", "")
+    .trim();
+}
+
 // ---------------------------------------------------------------------------
 // QUERIES
 // ---------------------------------------------------------------------------
@@ -57,20 +66,58 @@ export function parseKeyword(keyword: string): string[] {
   return alternatives.length > 0 ? alternatives : [keyword.trim()];
 }
 
-/** Monta as queries do Google, da mais precisa para a mais ampla. */
-export function buildDiscoveryQueries(keyword: string, city: string): string[] {
+export interface DiscoveryStrategy {
+  id: "category" | "synonyms" | "delivery" | "geo" | "whatsapp";
+  query: string;
+}
+
+const quote = (phrase: string) => `"${phrase}"`;
+const anyOf = (phrases: string[]) =>
+  phrases.length > 1 ? `(${phrases.map(quote).join(" OR ")})` : quote(phrases[0]);
+
+/** Sinônimos de busca da categoria (burger/burguer/hambúrguer para "Hamburgueria"), sem repetir a própria categoria. */
+function synonymsFor(alternatives: string[]): string[] {
+  const own = new Set(alternatives.map(normalizeLoose));
+  const found = new Set<string>();
+
+  for (const alternative of alternatives.map(normalizeLoose)) {
+    for (const family of NICHE_FAMILIES) {
+      if (!family.keys.some((key) => alternative.includes(key))) continue;
+      family.queryTerms.filter((term) => !own.has(normalizeLoose(term))).forEach((term) => found.add(term));
+    }
+  }
+  return [...found];
+}
+
+/**
+ * Estratégias de busca: cada uma explora uma forma diferente de o negócio se apresentar no
+ * Instagram. São hipóteses: o orquestrador mede quantos candidatos cada uma produz e só
+ * aprofunda as que rendem.
+ */
+export function buildInstagramStrategies(keyword: string, city: string, state?: string | null): DiscoveryStrategy[] {
   const alternatives = parseKeyword(keyword);
+  const synonyms = synonymsFor(alternatives);
+  const place = quote(city.replace(/"/g, "").trim());
+  const uf = state?.trim().toUpperCase();
 
-  const term = (suffix = "") => {
-    const phrases = alternatives.map((alt) => `"${alt}${suffix}"`);
-    return phrases.length > 1 ? `(${phrases.join(" OR ")})` : phrases[0];
-  };
-
-  return [
-    `site:instagram.com ${term()} "${city}"`,
-    `site:instagram.com ${term(" delivery")} "${city}"`,
-    `site:instagram.com ${term()} "${city}" "whatsapp"`,
+  const strategies: DiscoveryStrategy[] = [
+    { id: "category", query: `site:instagram.com ${anyOf(alternatives)} ${place}` },
   ];
+
+  if (synonyms.length > 0) {
+    strategies.push({ id: "synonyms", query: `site:instagram.com ${anyOf(synonyms)} ${place}` });
+  }
+
+  strategies.push({ id: "delivery", query: `site:instagram.com ${quote("delivery")} ${anyOf(alternatives)} ${place}` });
+
+  strategies.push(
+    uf
+      ? { id: "geo", query: `site:instagram.com ${anyOf([...alternatives, ...synonyms])} ${place} ${quote(uf)}` }
+      : { id: "whatsapp", query: `site:instagram.com ${anyOf(alternatives)} ${place} ${quote("whatsapp")}` },
+  );
+
+  const seen = new Set<string>();
+  return strategies.filter(({ query }) => !seen.has(query) && seen.add(query));
 }
 
 // ---------------------------------------------------------------------------
@@ -84,25 +131,36 @@ const STOP_TOKENS = new Set(["de", "da", "do", "das", "dos", "e", "a", "o", "par
  * Se a categoria contém alguma `keys`, qualquer um dos `terms` já conta como match.
  * Fora dessa tabela vale o fallback genérico: todos os tokens da categoria (com stem simples).
  */
-const NICHE_FAMILIES: Array<{ keys: string[]; terms: string[] }> = [
-  { keys: ["hamburg", "burger", "burguer"], terms: ["hamburg", "burger", "burguer", "smash"] },
-  { keys: ["sushi", "japon", "temak"], terms: ["sushi", "japon", "temaki", "sashimi", "nikkei"] },
-  { keys: ["hot dog", "hotdog"], terms: ["hot dog", "hotdog", "cachorro quente", "dogao"] },
-  { keys: ["cafeteria", "cafe"], terms: ["cafe", "cafeteria", "coffee"] },
-  { keys: ["lanchonete"], terms: ["lanch"] },
-  { keys: ["arabe"], terms: ["arabe", "esfiha", "kibe", "shawarma"] },
+const NICHE_FAMILIES: Array<{ keys: string[]; terms: string[]; queryTerms: string[] }> = [
+  {
+    keys: ["hamburg", "burger", "burguer"],
+    terms: ["hamburg", "burger", "burguer", "smash"],
+    queryTerms: ["burger", "burguer", "hambúrguer", "hamburguer"],
+  },
+  {
+    keys: ["sushi", "japon", "temak"],
+    terms: ["sushi", "japon", "temaki", "sashimi", "nikkei"],
+    queryTerms: ["sushi", "japonês", "temaki"],
+  },
+  {
+    keys: ["hot dog", "hotdog"],
+    terms: ["hot dog", "hotdog", "cachorro quente", "dogao"],
+    queryTerms: ["hot dog", "hotdog", "cachorro quente"],
+  },
+  { keys: ["cafeteria", "cafe"], terms: ["cafe", "cafeteria", "coffee"], queryTerms: ["café", "cafeteria", "coffee"] },
+  { keys: ["lanchonete"], terms: ["lanch"], queryTerms: ["lanches", "lanchonete"] },
+  {
+    keys: ["arabe"],
+    terms: ["arabe", "esfiha", "kibe", "shawarma"],
+    queryTerms: ["árabe", "esfiha", "kibe", "shawarma"],
+  },
 ];
 
-export interface ResultText {
-  title: string;
-  snippet: string;
-  handle: string;
-}
-
-/** "Hambúrguer" e a versão em fonte matemática do Instagram ("𝐇𝐚𝐦𝐛𝐮𝐫𝐠𝐮𝐞𝐫") caem no mesmo texto. */
-function normalizeText(value: string): string {
-  return normalizeForMatch(value.normalize("NFKD"));
-}
+/**
+ * confirmed = o texto menciona a categoria (ou um sinônimo dela).
+ * unknown   = não menciona. Não é prova de que é outro nicho, só falta de evidência.
+ */
+export type NicheEvidence = "confirmed" | "unknown";
 
 function stem(token: string): string {
   const stemmed = token.replace(/(aria|eria|ria|s)$/, "");
@@ -116,17 +174,17 @@ function containsTerm(haystack: string, term: string): boolean {
 }
 
 /**
- * Cria o verificador "esse resultado é do nicho buscado?" a partir da categoria.
+ * Cria o classificador "esse resultado é do nicho buscado?" a partir da categoria.
  *
- * Olha título + snippet + handle (o handle salva casos como "brasaburguersbu", em que o
- * título usa fonte estilizada). Resultado que não menciona a categoria é descartado —
- * foi assim que apareceram atriz coreana e página de ajuda do Instagram como lead.
+ * Recebe os textos disponíveis do resultado (título, snippet, handle; no Maps, também o tipo do
+ * estabelecimento). O handle entra porque salva casos como "brasaburguersbu", em que o título
+ * usa fonte estilizada ("Bʀᴀꜱᴀ Bᴜʀɢᴜᴇʀ") que a normalização Unicode não converte.
  */
-export function buildNicheMatcher(keyword: string): (result: ResultText) => boolean {
+export function buildNicheMatcher(keyword: string): (texts: string[]) => NicheEvidence {
   const anyTerms = new Set<string>();
   const allGroups: string[][] = [];
 
-  for (const alternative of parseKeyword(keyword).map(normalizeText)) {
+  for (const alternative of parseKeyword(keyword).map(normalizeLoose)) {
     for (const family of NICHE_FAMILIES) {
       if (family.keys.some((key) => alternative.includes(key))) {
         family.terms.forEach((term) => anyTerms.add(term));
@@ -141,11 +199,13 @@ export function buildNicheMatcher(keyword: string): (result: ResultText) => bool
   }
 
   // Categoria sem nenhum termo utilizável: melhor não filtrar do que descartar tudo.
-  if (anyTerms.size === 0 && allGroups.length === 0) return () => true;
+  if (anyTerms.size === 0 && allGroups.length === 0) return () => "confirmed";
 
-  return ({ title, snippet, handle }) => {
-    const haystack = normalizeText(`${title} ${snippet} ${handle}`);
-    if ([...anyTerms].some((term) => containsTerm(haystack, term))) return true;
-    return allGroups.some((group) => group.every((term) => containsTerm(haystack, term)));
+  return (texts) => {
+    const haystack = normalizeLoose(texts.filter(Boolean).join(" "));
+    if ([...anyTerms].some((term) => containsTerm(haystack, term))) return "confirmed";
+    return allGroups.some((group) => group.every((term) => containsTerm(haystack, term)))
+      ? "confirmed"
+      : "unknown";
   };
 }

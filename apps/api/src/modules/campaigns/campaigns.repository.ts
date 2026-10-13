@@ -20,6 +20,9 @@ export async function create(data: Record<string, unknown>) {
     status: "pending",
     processed: 0,
     found: 0,
+    // Colunas opcionais: se a migration ainda não rodou, insertWithAvailableColumns descarta.
+    ...(data.state ? { state: data.state } : {}),
+    ...(Array.isArray(data.sources) ? { sources: data.sources } : {}),
   };
 
   return await insertWithAvailableColumns(payload);
@@ -64,11 +67,30 @@ export async function updateStatus(id: string, status: string) {
 
 export async function updateStats(
   id: string,
-  patch: { status?: string; processed?: number; found?: number; error_count?: number },
+  patch: {
+    status?: string;
+    processed?: number;
+    found?: number;
+    error_count?: number;
+    completion_reason?: string;
+  },
 ) {
   const supabase = getSupabase();
-  const { error } = await supabase.from("campaigns").update(patch).eq("id", id);
-  if (error) console.error(`[CAMPAIGN] Falha ao atualizar stats: ${error.message}`);
+  const remainingPatch: Record<string, unknown> = { ...patch };
+
+  // Coluna nova ainda não migrada (ex.: completion_reason) não pode derrubar o update inteiro,
+  // senão o status da campanha deixaria de ser atualizado.
+  while (Object.keys(remainingPatch).length > 0) {
+    const { error } = await supabase.from("campaigns").update(remainingPatch).eq("id", id);
+    if (!error) return;
+
+    const missingColumn = getMissingColumn(error.message);
+    if (!missingColumn || !(missingColumn in remainingPatch)) {
+      console.error(`[CAMPAIGN] Falha ao atualizar stats: ${error.message}`);
+      return;
+    }
+    delete remainingPatch[missingColumn];
+  }
 }
 
 async function insertWithAvailableColumns(payload: Record<string, unknown>) {

@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { ExternalLink, Rocket, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +16,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { createCampaign } from "@/lib/api";
+import { createCampaign, type DiscoverySource } from "@/lib/api";
 import { Field } from "./Field";
 import { CaptureDestinationField } from "./CaptureDestinationField";
 import { NO_DESTINATION, resolveDestination } from "./captureDestination";
@@ -72,56 +74,97 @@ const CATEGORIES = [
   "Contabilidade",
 ];
 
-function buildQueries(category: string, city: string, neighborhood?: string) {
-  const location = [neighborhood, city].filter(Boolean).join(" ");
+const UFS = [
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA",
+  "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+];
+
+const SOURCE_OPTIONS: Array<{ id: DiscoverySource; label: string; hint: string }> = [
+  { id: "maps", label: "Google Meu Negócio", hint: "Estabelecimentos reais, com endereço e telefone" },
+  { id: "instagram", label: "Instagram", hint: "Perfis do nicho e WhatsApp da bio" },
+];
+
+/** "Sushi / Japonês" → ["Sushi", "Japonês"] (mesma regra do backend). */
+function categoryAlternatives(category: string) {
+  const parts = category.split(/[/,]/).map((part) => part.replace(/"/g, "").trim()).filter(Boolean);
+  return parts.length > 0 ? parts : [category.trim()];
+}
+
+/** Só a primeira busca de cada fonte: o backend gera mais variações (sinônimos, delivery, UF). */
+function buildQueries(category: string, city: string, neighborhood: string | undefined, state: string, sources: DiscoverySource[]) {
   if (!category || !city) return [];
-  return [
-    `site:instagram.com "${category}" "${location}"`,
-    `site:instagram.com "${category} delivery" "${location}"`,
-    `site:instagram.com "${category}" "${location}" "whatsapp"`,
-  ];
+
+  const alternatives = categoryAlternatives(category);
+  const phrases = alternatives.map((alt) => `"${alt}"`);
+  const location = [neighborhood, city].filter(Boolean).join(" ");
+  const queries: Array<{ label: string; query: string; url: string }> = [];
+
+  if (sources.includes("maps")) {
+    const query = `${alternatives[0]} em ${location}${state ? `, ${state}` : ""}`;
+    queries.push({
+      label: "Google Meu Negócio",
+      query,
+      url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`,
+    });
+  }
+
+  if (sources.includes("instagram")) {
+    const term = phrases.length > 1 ? `(${phrases.join(" OR ")})` : phrases[0];
+    const query = `site:instagram.com ${term} "${location}"`;
+    queries.push({
+      label: "Instagram",
+      query,
+      url: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+    });
+  }
+
+  return queries;
 }
 
 function SearchPreview({
   category,
   city,
   neighborhood,
+  state,
+  sources,
 }: {
   category: string;
   city: string;
   neighborhood?: string;
+  state: string;
+  sources: DiscoverySource[];
 }) {
-  const queries = buildQueries(category, city, neighborhood);
+  const queries = buildQueries(category, city, neighborhood, state, sources);
   if (queries.length === 0) return null;
 
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         <Search className="h-3.5 w-3.5" />
-        Preview das buscas no Google
+        Exemplo das buscas
       </div>
       <div className="space-y-1.5">
-        {queries.map((q, i) => {
-          const url = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
-          return (
-            <div key={i} className="flex items-center gap-2 group">
-              <span className="text-[10px] font-medium w-4 text-muted-foreground/60">{i + 1}.</span>
-              <code className="flex-1 text-[11px] bg-background border border-border rounded-md px-2 py-1.5 font-mono text-foreground truncate">
-                {q}
-              </code>
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Testar no Google"
-              >
-                <ExternalLink className="h-3.5 w-3.5 text-primary" />
-              </a>
-            </div>
-          );
-        })}
+        {queries.map(({ label, query, url }) => (
+          <div key={label} className="flex items-center gap-2 group">
+            <span className="text-[10px] font-medium w-24 shrink-0 text-muted-foreground/70">{label}</span>
+            <code className="flex-1 text-[11px] bg-background border border-border rounded-md px-2 py-1.5 font-mono text-foreground truncate">
+              {query}
+            </code>
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Testar"
+            >
+              <ExternalLink className="h-3.5 w-3.5 text-primary" />
+            </a>
+          </div>
+        ))}
       </div>
+      <p className="text-[11px] text-muted-foreground">
+        O sistema roda variações (sinônimos, delivery, UF) e só aprofunda as buscas que estão rendendo.
+      </p>
     </div>
   );
 }
@@ -129,8 +172,10 @@ function SearchPreview({
 const instagramSchema = z.object({
   category: z.string().min(1, "Informe a categoria"),
   city: z.string().min(1, "Cidade obrigatória"),
+  state: z.string().length(2, "Selecione a UF"),
   neighborhood: z.string().optional(),
   quantity: z.coerce.number().min(1).max(2000),
+  sources: z.array(z.enum(["maps", "instagram"])).min(1, "Escolha ao menos uma fonte"),
 });
 
 type InstagramFormData = z.infer<typeof instagramSchema>;
@@ -155,7 +200,7 @@ export function InstagramFormDialog({
 
   const form = useForm<InstagramFormData>({
     resolver: zodResolver(instagramSchema),
-    defaultValues: { category: "", city: defaultCity ?? "", neighborhood: "", quantity: 100 },
+    defaultValues: { category: "", city: defaultCity ?? "", state: "", neighborhood: "", quantity: 100, sources: ["maps", "instagram"] },
   });
 
   // Aberto de dentro de uma campanha, a cidade já vem com o território dela
@@ -163,9 +208,9 @@ export function InstagramFormDialog({
     if (open && defaultCity) form.setValue("city", defaultCity);
   }, [open, defaultCity, form]);
 
-  const [category, city, neighborhood] = useWatch({
+  const [category, city, neighborhood, state, sources] = useWatch({
     control: form.control,
-    name: ["category", "city", "neighborhood"],
+    name: ["category", "city", "neighborhood", "state", "sources"],
   });
 
   const mutation = useMutation({
@@ -180,7 +225,7 @@ export function InstagramFormDialog({
       queryClient.invalidateQueries({ queryKey: ["campaign-leads"] });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       setDestination(NO_DESTINATION);
-      form.reset({ category: "", city: defaultCity ?? "", neighborhood: "", quantity: 100 });
+      form.reset({ category: "", city: defaultCity ?? "", state: "", neighborhood: "", quantity: 100, sources: ["maps", "instagram"] });
       onOpenChange(false);
     },
     onError: (error) => {
@@ -194,7 +239,7 @@ export function InstagramFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Descoberta via Instagram</DialogTitle>
+          <DialogTitle>Descoberta de leads</DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-4 pt-2">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -216,6 +261,21 @@ export function InstagramFormDialog({
               <Input placeholder="Ex: Curitiba" {...form.register("city")} />
             </Field>
 
+            <Field label="UF *" error={form.formState.errors.state?.message}>
+              <Select value={state} onValueChange={(value) => form.setValue("state", value, { shouldValidate: true })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
+                <SelectContent>
+                  {UFS.map((uf) => (
+                    <SelectItem key={uf} value={uf}>
+                      {uf}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
             <Field label="Bairro (opcional)">
               <Input placeholder="Ex: Batel, Bacacheri…" {...form.register("neighborhood")} />
             </Field>
@@ -225,7 +285,37 @@ export function InstagramFormDialog({
             </Field>
           </div>
 
-          <SearchPreview category={category} city={city} neighborhood={neighborhood} />
+          <Field label="Fontes *" error={form.formState.errors.sources?.message}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {SOURCE_OPTIONS.map((option) => {
+                const checked = sources.includes(option.id);
+                return (
+                  <label
+                    key={option.id}
+                    className="flex items-start gap-2 rounded-lg border border-border p-3 cursor-pointer hover:bg-accent/40 transition"
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(value) =>
+                        form.setValue(
+                          "sources",
+                          value === true ? [...sources, option.id] : sources.filter((source) => source !== option.id),
+                          { shouldValidate: true },
+                        )
+                      }
+                      className="mt-0.5"
+                    />
+                    <span className="space-y-0.5">
+                      <span className="block text-sm font-medium">{option.label}</span>
+                      <span className="block text-[11px] text-muted-foreground">{option.hint}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </Field>
+
+          <SearchPreview category={category} city={city} neighborhood={neighborhood} state={state} sources={sources} />
 
           <CaptureDestinationField value={destination} onChange={setDestination} fixedCampaignId={campaignId} />
 

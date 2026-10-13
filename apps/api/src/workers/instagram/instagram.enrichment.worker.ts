@@ -1,11 +1,7 @@
 import axios from "axios";
 import { getSupabase } from "../../lib/supabase";
-import {
-  extractUsernameFromUrl,
-  extractWhatsappFromBio,
-  extractLinktreeFromBio,
-  extractDeliveryLinkFromBio,
-} from "./instagram.parser";
+import { extractUsernameFromUrl } from "./instagram.parser";
+import { profileToLeadFields, type ScrapeCreatorsProfile } from "./instagram.profile";
 import * as logsRepository from "../../modules/logs/logs.repository";
 
 async function log(
@@ -24,16 +20,6 @@ async function log(
 // ---------------------------------------------------------------------------
 // TIPOS
 // ---------------------------------------------------------------------------
-
-interface ScrapeCreatorsProfile {
-  username?: string;
-  full_name?: string;
-  biography?: string;
-  bio_links?: Array<{ url: string }>;
-  external_url?: string | null;
-  follower_count?: number;
-}
-
 interface LeadRow {
   id: string;
   name: string;
@@ -46,7 +32,7 @@ interface LeadRow {
 
 const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
-async function fetchInstagramProfile(handle: string): Promise<ScrapeCreatorsProfile | null> {
+export async function fetchInstagramProfile(handle: string): Promise<ScrapeCreatorsProfile | null> {
   const apiKey = process.env.SCRAPECREATORS_API_KEY;
   if (!apiKey) throw new Error("[ENRICHMENT] SCRAPECREATORS_API_KEY não configurada no .env");
 
@@ -66,32 +52,53 @@ async function fetchInstagramProfile(handle: string): Promise<ScrapeCreatorsProf
 // WORKER PRINCIPAL
 // ---------------------------------------------------------------------------
 
-export async function runInstagramEnrichment(campaignId: string): Promise<void> {
+export interface EnrichmentOptions {
+  /** Teto de consultas ao ScrapeCreators nesta passada (orçamento da campanha). */
+  maxCalls?: number;
+}
+
+/** Devolve quantas consultas ao ScrapeCreators foram feitas. */
+export async function runInstagramEnrichment(
+  campaignId: string,
+  options: EnrichmentOptions = {},
+): Promise<number> {
   await log(campaignId, `Iniciando enriquecimento`);
 
   const supabase = getSupabase();
 
-  const { data: leads, error } = await supabase
-    .from("leads")
-    .select("id, name, instagram")
-    .eq("campaign_id", campaignId)
-    .is("whatsapp", null)
-    .not("instagram", "is", null);
+  const pending = (skipEnriched: boolean) => {
+    const query = supabase
+      .from("leads")
+      .select("id, name, instagram")
+      .eq("campaign_id", campaignId)
+      .is("whatsapp", null)
+      .not("instagram", "is", null);
+    return skipEnriched ? query.is("enriched_at", null) : query;
+  };
+
+  // Leads já enriquecidos (inclusive os validados na descoberta) não gastam outra consulta.
+  let { data: leads, error } = await pending(true);
+  if (error && /enriched_at/.test(error.message)) ({ data: leads, error } = await pending(false));
 
   if (error) {
     await log(campaignId, `Erro ao buscar leads: ${error.message}`, "error");
-    return;
+    return 0;
   }
 
   if (!leads || leads.length === 0) {
     await log(campaignId, `Nenhum lead pendente para enriquecer.`);
-    return;
+    return 0;
   }
 
-  await log(campaignId, `${leads.length} leads para enriquecer.`);
+  const queue = (leads as LeadRow[]).slice(0, options.maxCalls ?? Infinity);
+  if (queue.length < leads.length) {
+    await log(campaignId, `Orçamento de enriquecimento: ${queue.length} de ${leads.length} leads.`, "warn");
+  }
+  await log(campaignId, `${queue.length} leads para enriquecer.`);
 
-  for (let i = 0; i < (leads as LeadRow[]).length; i++) {
-    const lead = (leads as LeadRow[])[i];
+  let calls = 0;
+  for (let i = 0; i < queue.length; i++) {
+    const lead = queue[i];
     const username = extractUsernameFromUrl(lead.instagram);
 
     if (!username) {
@@ -100,6 +107,7 @@ export async function runInstagramEnrichment(campaignId: string): Promise<void> 
     }
 
     try {
+      calls++;
       const profile = await fetchInstagramProfile(username);
 
       if (!profile) {
@@ -107,41 +115,23 @@ export async function runInstagramEnrichment(campaignId: string): Promise<void> 
         continue;
       }
 
-      const bio = profile.biography ?? "";
-      const bioLinks = profile.bio_links ?? [];
-      const extUrl = profile.external_url ?? undefined;
-
-      const whatsapp     = extractWhatsappFromBio(bio, bioLinks, extUrl);
-      const linktree     = extractLinktreeFromBio(bio, bioLinks, extUrl);
-      const deliveryLink = extractDeliveryLinkFromBio(bio, bioLinks, extUrl);
-
-      await supabase
-        .from("leads")
-        .update({
-          whatsapp,
-          linktree,
-          delivery_link: deliveryLink,
-          biography:     profile.biography   ?? null,
-          external_url:  profile.external_url ?? null,
-          followers:     profile.follower_count ?? null,
-          bio_links:     bioLinks,
-          enriched_at:   new Date().toISOString(),
-        })
-        .eq("id", lead.id);
+      const fields = profileToLeadFields(profile);
+      await supabase.from("leads").update(fields).eq("id", lead.id);
 
       await log(
         campaignId,
-        `#${i + 1} | ${lead.name} | WA: ${whatsapp ?? "—"} | Seguidores: ${profile.follower_count ?? "—"}`,
+        `#${i + 1} | ${lead.name} | WA: ${fields.whatsapp ?? "—"} | Seguidores: ${profile.follower_count ?? "—"}`,
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       await log(campaignId, `#${i + 1} | ${lead.name} | Erro: ${msg}`, "error");
     }
 
-    if (i < (leads as LeadRow[]).length - 1) {
+    if (i < queue.length - 1) {
       await delay(1200);
     }
   }
 
   await log(campaignId, `Enriquecimento concluído.`);
+  return calls;
 }
