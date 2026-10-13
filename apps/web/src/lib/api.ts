@@ -10,7 +10,10 @@ type ApiLog = Record<string, unknown>;
 export type DiscoverySource = "instagram" | "maps";
 
 export interface CreateCampaignInput {
+  /** Primeiro segmento (compatível com a API antiga). */
   category: string;
+  /** Todos os segmentos: cada um roda a descoberta completa, e `quantity` é POR segmento. */
+  categories?: string[];
   city: string;
   /** UF da cidade (ex.: "MA"): desambigua cidades homônimas e valida o endereço do Google Meu Negócio. */
   state?: string;

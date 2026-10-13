@@ -2,6 +2,7 @@ import * as campaignsRepository from "./campaigns.repository";
 import * as prospectingCampaignsRepository from "../prospecting-campaigns/prospecting-campaigns.repository";
 import { runDiscovery } from "../../workers/discovery/discovery.worker";
 import type { DiscoveryInput, DiscoverySource } from "../../workers/discovery/run";
+import { MAX_SEGMENTS, resolveSegments } from "../../workers/discovery/segments";
 import { runInstaDeliveryScraping } from "../../workers/instadelivery/instadelivery.worker";
 import { runIfoodScraping } from "../../workers/ifood/ifood.worker";
 import { cancel } from "../../lib/cancellation";
@@ -28,16 +29,38 @@ function resolveSources(value: unknown): DiscoverySource[] {
   return valid.length > 0 ? [...new Set(valid)] : ["instagram"];
 }
 
-/** Parâmetros da descoberta a partir do corpo da requisição (ou da campanha salva, ao reiniciar). */
+/**
+ * Valida os segmentos e monta a linha da campanha. `quantity` do formulário é POR SEGMENTO; a
+ * campanha guarda o total (é o denominador da barra de progresso) e `category` fica como o
+ * resumo legível ("Hamburgueria, Pizzaria"), que também funciona como busca se `categories`
+ * não existir no banco (vira alternativas da mesma busca).
+ */
+function planCapture(data: Record<string, unknown>) {
+  const segments = resolveSegments(data);
+  if (segments.length === 0) throw new Error("Informe ao menos um segmento.");
+  if (segments.length > MAX_SEGMENTS) throw new Error(`Escolha no máximo ${MAX_SEGMENTS} segmentos por captura.`);
+
+  const perSegment = (data.quantity as number) ?? 100;
+  return {
+    segments,
+    perSegment,
+    row: { ...data, category: segments.join(", "), categories: segments, quantity: perSegment * segments.length },
+  };
+}
+
+/** Parâmetros da descoberta: do corpo da requisição ou, ao reiniciar, da campanha salva. */
 function discoveryInput(
   data: Record<string, unknown>,
+  segments: string[],
+  perSegment: number,
   prospectingCampaignId?: string,
 ): DiscoveryInput {
   return {
-    category: data.category as string,
+    category: segments[0],
+    categories: segments,
     city: data.city as string,
     state: typeof data.state === "string" ? data.state : null,
-    quantity: (data.quantity as number) ?? 100,
+    quantity: perSegment,
     sources: resolveSources(data.sources),
     prospectingCampaignId,
   };
@@ -75,15 +98,16 @@ export async function getCampaignService(id: string) {
  * ainda não começou.
  */
 export async function campaignleadsearchService(data: Record<string, unknown>) {
+  const plan = planCapture(data);
   const prospectingCampaignId = await resolveDestination(data);
-  const campaign = await campaignsRepository.create(data);
+  const campaign = await campaignsRepository.create(plan.row);
 
   if (!campaign) {
     throw new Error("Falha ao criar campanha no banco de dados");
   }
 
   // Fire-and-forget: não aguarda — responde ao cliente imediatamente
-  runDiscovery(campaign.id, discoveryInput(data, prospectingCampaignId)).catch(async (err) => {
+  runDiscovery(campaign.id, discoveryInput(data, plan.segments, plan.perSegment, prospectingCampaignId)).catch(async (err) => {
     console.error(`[SERVICE] Worker falhou para campanha ${campaign.id}:`, err);
     await campaignsRepository.updateStatus(campaign.id, "error").catch(() => {});
   });
@@ -96,15 +120,16 @@ export async function campaignleadsearchService(data: Record<string, unknown>) {
 // ---------------------------------------------------------------------------
 
 export async function campaignInstagramSearchService(data: Record<string, unknown>) {
+  const plan = planCapture(data);
   const prospectingCampaignId = await resolveDestination(data);
-  const campaign = await campaignsRepository.create(data);
+  const campaign = await campaignsRepository.create(plan.row);
 
   if (!campaign) {
     throw new Error("Falha ao criar campanha no banco de dados");
   }
 
   // Fire-and-forget: não aguarda — responde ao cliente imediatamente
-  runDiscovery(campaign.id, discoveryInput(data, prospectingCampaignId)).catch((err) =>
+  runDiscovery(campaign.id, discoveryInput(data, plan.segments, plan.perSegment, prospectingCampaignId)).catch((err) =>
     console.error(`[SERVICE] Worker falhou para campanha ${campaign.id}:`, err),
   );
 
@@ -192,7 +217,12 @@ export async function startCampaignService(id: string) {
   const updatedCampaign = await campaignsRepository.updateStatus(id, "running");
 
   // ✅ Worker agora realmente disparado — não mais comentado
-  runDiscovery(id, discoveryInput(campaign as Record<string, unknown>)).catch((err) =>
+  const row = campaign as Record<string, unknown>;
+  const segments = resolveSegments(row);
+  // A campanha guarda o total; a meta é por segmento.
+  const perSegment = Math.ceil(((row.quantity as number) ?? 100) / Math.max(1, segments.length));
+
+  runDiscovery(id, discoveryInput(row, segments, perSegment)).catch((err) =>
     console.error(`[SERVICE] Worker falhou ao reiniciar campanha ${id}:`, err),
   );
 

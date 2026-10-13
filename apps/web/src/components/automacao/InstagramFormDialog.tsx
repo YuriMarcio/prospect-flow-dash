@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { createCampaign, type DiscoverySource } from "@/lib/api";
 import { Field } from "./Field";
+import { SegmentPicker } from "./SegmentPicker";
 import { CaptureDestinationField } from "./CaptureDestinationField";
 import { NO_DESTINATION, resolveDestination } from "./captureDestination";
 
@@ -123,12 +124,14 @@ function buildQueries(category: string, city: string, neighborhood: string | und
 
 function SearchPreview({
   category,
+  segments,
   city,
   neighborhood,
   state,
   sources,
 }: {
   category: string;
+  segments: number;
   city: string;
   neighborhood?: string;
   state: string;
@@ -141,7 +144,7 @@ function SearchPreview({
     <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         <Search className="h-3.5 w-3.5" />
-        Exemplo das buscas
+        Exemplo das buscas{segments > 1 ? ` (1º de ${segments} segmentos)` : ""}
       </div>
       <div className="space-y-1.5">
         {queries.map(({ label, query, url }) => (
@@ -163,14 +166,17 @@ function SearchPreview({
         ))}
       </div>
       <p className="text-[11px] text-muted-foreground">
-        O sistema roda variações (sinônimos, delivery, UF) e só aprofunda as buscas que estão rendendo.
+        O sistema roda variações (sinônimos, delivery, UF) em cada segmento e só aprofunda as buscas que estão rendendo.
       </p>
     </div>
   );
 }
 
+/** Teto de segmentos por captura (o backend valida o mesmo limite). */
+const MAX_SEGMENTS = 5;
+
 const instagramSchema = z.object({
-  category: z.string().min(1, "Informe a categoria"),
+  categories: z.array(z.string().min(1)).min(1, "Escolha ao menos um segmento").max(MAX_SEGMENTS),
   city: z.string().min(1, "Cidade obrigatória"),
   state: z.string().length(2, "Selecione a UF"),
   neighborhood: z.string().optional(),
@@ -200,7 +206,7 @@ export function InstagramFormDialog({
 
   const form = useForm<InstagramFormData>({
     resolver: zodResolver(instagramSchema),
-    defaultValues: { category: "", city: defaultCity ?? "", state: "", neighborhood: "", quantity: 100, sources: ["maps", "instagram"] },
+    defaultValues: { categories: [], city: defaultCity ?? "", state: "", neighborhood: "", quantity: 100, sources: ["maps", "instagram"] },
   });
 
   // Aberto de dentro de uma campanha, a cidade já vem com o território dela
@@ -208,14 +214,18 @@ export function InstagramFormDialog({
     if (open && defaultCity) form.setValue("city", defaultCity);
   }, [open, defaultCity, form]);
 
-  const [category, city, neighborhood, state, sources] = useWatch({
+  const [categories, city, neighborhood, state, sources, quantity] = useWatch({
     control: form.control,
-    name: ["category", "city", "neighborhood", "state", "sources"],
+    name: ["categories", "city", "neighborhood", "state", "sources", "quantity"],
   });
 
   const mutation = useMutation({
     mutationFn: (data: InstagramFormData) =>
-      createCampaign({ ...data, prospectingCampaignId: resolveDestination(campaignId, destination) }),
+      createCampaign({
+        ...data,
+        category: data.categories[0],
+        prospectingCampaignId: resolveDestination(campaignId, destination),
+      }),
     onSuccess: (campaign) => {
       toast.success("Captura iniciada!", {
         description: `${campaign.category} em ${campaign.city} • ${campaign.quantity} leads`,
@@ -225,7 +235,7 @@ export function InstagramFormDialog({
       queryClient.invalidateQueries({ queryKey: ["campaign-leads"] });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       setDestination(NO_DESTINATION);
-      form.reset({ category: "", city: defaultCity ?? "", state: "", neighborhood: "", quantity: 100, sources: ["maps", "instagram"] });
+      form.reset({ categories: [], city: defaultCity ?? "", state: "", neighborhood: "", quantity: 100, sources: ["maps", "instagram"] });
       onOpenChange(false);
     },
     onError: (error) => {
@@ -243,19 +253,16 @@ export function InstagramFormDialog({
         </DialogHeader>
         <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-4 pt-2">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Segmento / Categoria *" error={form.formState.errors.category?.message}>
-              <Input
-                list="category-list"
-                placeholder="Ex: Hamburgueria, Pet Shop, Barbearia…"
-                {...form.register("category")}
-                autoComplete="off"
-              />
-              <datalist id="category-list">
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-            </Field>
+            <div className="md:col-span-2">
+              <Field label="Segmentos *" error={form.formState.errors.categories?.message}>
+                <SegmentPicker
+                  value={categories}
+                  onChange={(segments) => form.setValue("categories", segments, { shouldValidate: true })}
+                  options={CATEGORIES}
+                  max={MAX_SEGMENTS}
+                />
+              </Field>
+            </div>
 
             <Field label="Cidade *" error={form.formState.errors.city?.message}>
               <Input placeholder="Ex: Curitiba" {...form.register("city")} />
@@ -280,8 +287,16 @@ export function InstagramFormDialog({
               <Input placeholder="Ex: Batel, Bacacheri…" {...form.register("neighborhood")} />
             </Field>
 
-            <Field label="Quantidade de leads *" error={form.formState.errors.quantity?.message}>
+            <Field
+              label={categories.length > 1 ? "Leads por segmento *" : "Quantidade de leads *"}
+              error={form.formState.errors.quantity?.message}
+            >
               <Input type="number" min={1} max={2000} {...form.register("quantity")} />
+              {categories.length > 1 && Number(quantity) > 0 && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Até {Number(quantity) * categories.length} leads no total ({categories.length} segmentos).
+                </p>
+              )}
             </Field>
           </div>
 
@@ -315,7 +330,7 @@ export function InstagramFormDialog({
             </div>
           </Field>
 
-          <SearchPreview category={category} city={city} neighborhood={neighborhood} state={state} sources={sources} />
+          <SearchPreview category={categories[0] ?? ""} segments={categories.length} city={city} neighborhood={neighborhood} state={state} sources={sources} />
 
           <CaptureDestinationField value={destination} onChange={setDestination} fixedCampaignId={campaignId} />
 

@@ -42,9 +42,13 @@ export interface DiscoveryDeps {
 }
 
 export interface DiscoveryInput {
+  /** Segmento único (clientes antigos). Com `categories`, vale a lista. */
   category: string;
+  /** Segmentos da captura: cada um roda a descoberta completa, com `quantity` e orçamento próprios. */
+  categories?: string[];
   city: string;
   state?: string | null;
+  /** Meta de leads POR SEGMENTO. */
   quantity: number;
   sources: DiscoverySource[];
   /** Painel (campanha de prospecção) que recebe os leads; sem ele vão para o Kanban geral. */
@@ -53,12 +57,17 @@ export interface DiscoveryInput {
 
 export interface RunContext {
   campaignId: string;
+  /** Segmento desta corrida: é a categoria gravada nos leads que ela cria. */
   category: string;
   city: string;
   /** UF já normalizada (ex.: "MA") ou null. */
   state: string | null;
   quantity: number;
   prospectingCampaignId?: string;
+  /** Leads já somados pelos segmentos anteriores: o progresso da campanha é o total de todos. */
+  foundBefore: number;
+  /** Prefixo das linhas de log quando a captura tem mais de um segmento. */
+  logPrefix: string;
   /** Fontes escolhidas nesta captura: uma fonte divide o orçamento de buscas com as outras. */
   sources: DiscoverySource[];
   deps: DiscoveryDeps;
@@ -126,7 +135,7 @@ export class DiscoveryRun {
   }
 
   log(message: string, level: LogLevel = "info"): Promise<void> {
-    return this.ctx.deps.log(this.ctx.campaignId, message, level);
+    return this.ctx.deps.log(this.ctx.campaignId, `${this.ctx.logPrefix}${message}`, level);
   }
 
   private readonly registered: RegisteredLead[] = [];
@@ -244,6 +253,7 @@ export class DiscoveryRun {
 
   async syncStats(): Promise<void> {
     // `processed` acompanha `found`: a barra de progresso da tela mede a meta de leads válidos.
-    await this.ctx.deps.campaigns.updateStats(this.ctx.campaignId, { processed: this.found, found: this.found });
+    const total = this.ctx.foundBefore + this.found;
+    await this.ctx.deps.campaigns.updateStats(this.ctx.campaignId, { processed: total, found: total });
   }
 }

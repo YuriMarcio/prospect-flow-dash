@@ -22,6 +22,7 @@ export async function create(data: Record<string, unknown>) {
     found: 0,
     // Colunas opcionais: se a migration ainda não rodou, insertWithAvailableColumns descarta.
     ...(data.state ? { state: data.state } : {}),
+    ...(Array.isArray(data.categories) ? { categories: data.categories } : {}),
     ...(Array.isArray(data.sources) ? { sources: data.sources } : {}),
   };
 

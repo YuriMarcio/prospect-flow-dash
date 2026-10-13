@@ -470,3 +470,113 @@ describe("consolidação entre fontes", () => {
     assert.equal(s.final()?.found, 2);
   });
 });
+
+const strategiesFor = (category: string) =>
+  Object.fromEntries(buildInstagramStrategies(category, INPUT.city, INPUT.state).map((strategy) => [strategy.id, strategy.query]));
+
+const pizza = (n: number) => ig(`pizza${n}`, `Pizza ${n} Pizzaria`, "Pizzaria • Santa Inês - MA");
+
+describe("vários segmentos", () => {
+  const HAMB = strategiesFor("Hamburgueria");
+  const PIZZA = strategiesFor("Pizzaria");
+  const MULTI: DiscoveryInput = { ...INPUT, quantity: 5, categories: ["Hamburgueria", "Pizzaria"] };
+
+  it("cada lead sai com a categoria do segmento em que foi achado", async () => {
+    const s = setup({
+      pages: { [HAMB.category]: [[approved(1), approved(2)]], [PIZZA.category]: [[pizza(1)]] },
+    });
+
+    await runDiscovery("c1", MULTI, s.deps);
+
+    assert.deepEqual(s.saved.map((lead) => lead.category), ["Hamburgueria", "Hamburgueria", "Pizzaria"]);
+    assert.equal(s.final()?.found, 3);
+  });
+
+  it("o progresso soma os segmentos", async () => {
+    const s = setup({
+      pages: { [HAMB.category]: [[approved(1), approved(2)]], [PIZZA.category]: [[pizza(1)]] },
+    });
+
+    await runDiscovery("c1", MULTI, s.deps);
+
+    const progress = s.patches.filter((patch) => patch.found !== undefined && patch.status === undefined);
+    assert.deepEqual(progress.map((patch) => patch.found), [1, 2, 3]);
+  });
+
+  it("a meta é por segmento: 1 lead em cada conclui como goal_reached", async () => {
+    const s = setup({
+      pages: { [HAMB.category]: [[approved(1), approved(2)]], [PIZZA.category]: [[pizza(1), pizza(2)]] },
+    });
+
+    await runDiscovery("c1", { ...MULTI, quantity: 1 }, s.deps);
+
+    assert.equal(s.saved.length, 2);
+    assert.equal(s.final()?.found, 2);
+    assert.equal(s.final()?.completion_reason, "goal_reached");
+  });
+
+  it("segmento que não bate a meta impede goal_reached", async () => {
+    const s = setup({
+      pages: { [HAMB.category]: [[approved(1), approved(2)]] },
+    });
+
+    await runDiscovery("c1", { ...MULTI, quantity: 2 }, s.deps);
+
+    assert.equal(s.final()?.found, 2);
+    assert.equal(s.final()?.completion_reason, "sources_exhausted");
+  });
+
+  it("o orçamento é por segmento", async () => {
+    const s = setup({
+      limits: { maxSearchRequests: 1 },
+      pages: { [HAMB.category]: [[approved(1)]], [PIZZA.category]: [[pizza(1)]] },
+    });
+
+    await runDiscovery("c1", MULTI, s.deps);
+
+    assert.equal(s.searches.length, 2); // 1 busca para cada segmento
+    assert.equal(s.saved.length, 2);
+    assert.equal(s.final()?.completion_reason, "budget_exhausted");
+  });
+
+  it("resultado de outro segmento não entra: nicho é por segmento", async () => {
+    const s = setup({
+      pages: { [HAMB.category]: [[approved(1)]], [PIZZA.category]: [[approved(2)]] },
+    });
+
+    await runDiscovery("c1", MULTI, s.deps);
+
+    assert.deepEqual(s.saved.map((lead) => lead.category), ["Hamburgueria"]);
+    assert.ok(s.queued().some((row) => row.dedupe_key === "burger2" && row.reason === "niche_unconfirmed"));
+  });
+
+  it("as linhas de log indicam o segmento", async () => {
+    const s = setup({ pages: { [PIZZA.category]: [[pizza(1)]] } });
+
+    await runDiscovery("c1", MULTI, s.deps);
+
+    assert.ok(s.logs.some((line) => line.startsWith("[Pizzaria] ")));
+    assert.ok(s.logs.includes('Segmento 2/2: "Pizzaria"'));
+  });
+
+  it("cancelada no primeiro segmento: o segundo nem começa", async () => {
+    const s = setup({
+      cancelAfterSearches: 1,
+      pages: { [HAMB.category]: [[approved(1)]], [PIZZA.category]: [[pizza(1)]] },
+    });
+
+    await runDiscovery("c1", MULTI, s.deps);
+
+    assert.ok(s.searches.every((call) => call.query.includes("Hamburgueria") || !call.query.includes("Pizzaria")));
+    assert.notEqual(s.final()?.status, "done");
+  });
+
+  it("um segmento só (formato antigo) continua igual, sem prefixo nos logs", async () => {
+    const s = setup({ pages: { [STRATEGIES.category]: [[approved(1)]] } });
+
+    await runDiscovery("c1", INPUT, s.deps);
+
+    assert.ok(s.logs.every((line) => !line.startsWith("[Hamburgueria]")));
+    assert.equal(s.final()?.found, 1);
+  });
+});
