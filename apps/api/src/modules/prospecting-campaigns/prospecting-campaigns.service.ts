@@ -73,8 +73,9 @@ export async function deleteCampaignService(id: string) {
   if (!campaign) throw new Error("Campanha não encontrada.");
 
   await leadsRepository.releaseCampaign(id);
-  await messagesRepository.removeAllForCampaign(id);
+  // dispatch_queue.message_id referencia bot_messages sem ON DELETE: a fila tem que sair antes das mensagens.
   await queueRepository.removeAllForCampaign(id);
+  await messagesRepository.removeAllForCampaign(id);
   await planRepository.removeAllForCampaign(id);
   await botLogs.detachCampaign(id);
   await campaignsRepository.remove(id);
