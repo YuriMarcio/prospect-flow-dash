@@ -30,6 +30,8 @@ import {
   confirmPlanningSession,
   getActivePlanningSession,
   sendPlannerTurn,
+  countPlanItems,
+  type PlannerTaskDraft,
   type PlanningSession,
 } from "@/lib/objectivePlanning";
 import {
@@ -44,6 +46,7 @@ import { markdownToBlocks } from "@/lib/markdownToBlocks";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { areaMeta, priorityMeta } from "@/lib/objectiveMeta";
 
 type PlannerMode = "objectives" | "workspace";
 
@@ -110,6 +113,7 @@ const MODULES = [
 ];
 
 const TIPS = [
+  "Cole uma lista inteira (EAP, checklist, plano) — a IA mantém a estrutura e a numeração e monta objetivos, marcos, issues e subissues.",
   "Peça pra IA criar vários objetivos de uma vez — ela separa cada um certinho.",
   "Você pode pedir uma tarefa avulsa, sem vincular a nenhum objetivo.",
   "Fale prazos do jeito natural: \"até sexta\", \"esse mês\", \"daqui 2 semanas\".",
@@ -121,7 +125,7 @@ const NOT_AVAILABLE_MSG =
   "Essa capacidade ainda não está disponível — por enquanto a IA cria objetivos/tarefas e monta páginas no Workspace.";
 
 const MODE_PLACEHOLDER: Record<PlannerMode, string> = {
-  objectives: "Peça para criar objetivos ou tarefas…",
+  objectives: "Peça para criar objetivos ou tarefas, ou cole uma lista…",
   workspace: "Peça para montar uma página sobre algum assunto…",
 };
 
@@ -135,6 +139,48 @@ function formatHistoryTime(iso: string): string {
   yesterday.setDate(now.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) return `Ontem, ${time}`;
   return `${date.toLocaleDateString("pt-BR")}, ${time}`;
+}
+
+const LEVEL_LABELS = ["", "Marco", "Issue", "Subissue"];
+
+/** Um item do plano proposto com os níveis abaixo dele; área, prioridade, prazo e "já feito" aparecem como etiquetas. */
+function PlanNode({
+  draft,
+  level,
+  standaloneTask = false,
+}: {
+  draft: PlannerTaskDraft;
+  level: number;
+  standaloneTask?: boolean;
+}) {
+  const area = areaMeta(draft.area);
+  const priority = priorityMeta(draft.priority);
+  const children = draft.tasks ?? [];
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <p className={cn(level === 0 ? "text-sm font-medium" : "text-xs text-muted-foreground")}>
+          {standaloneTask && <span className="text-muted-foreground">Tarefa: </span>}
+          <span className={cn(draft.done && "line-through")}>{draft.title}</span>
+        </p>
+        {draft.done && <span className="rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">Feito</span>}
+        {level > 0 && LEVEL_LABELS[level] && (
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">{LEVEL_LABELS[level]}</span>
+        )}
+        {area && <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium", area.tag)}>{area.label}</span>}
+        {priority && <span className={cn("text-[10px] font-medium", priority.className)}>{priority.label}</span>}
+        {draft.dueDate && <span className="text-[10px] text-muted-foreground">Prazo: {draft.dueDate}</span>}
+      </div>
+      {children.length > 0 && (
+        <div className="mt-1 space-y-1 border-l border-border pl-3">
+          {children.map((child, i) => (
+            <PlanNode key={i} draft={child} level={level + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function AssistenteIAPage() {
@@ -389,27 +435,13 @@ export function AssistenteIAPage() {
             <div className="border-t border-border bg-muted/30 p-4">
               <div className="max-w-5xl mx-auto">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                  Plano proposto ({objectivesSession.draft.length} item{objectivesSession.draft.length === 1 ? "" : "s"})
+                  Plano proposto ({countPlanItems(objectivesSession.draft)} item
+                  {countPlanItems(objectivesSession.draft) === 1 ? "" : "s"})
                 </p>
-                <div className="space-y-2 max-h-48 overflow-y-auto mb-3">
+                <div className="space-y-2 max-h-[40vh] overflow-y-auto mb-3">
                   {objectivesSession.draft.map((objective, i) => (
                     <div key={i} className="rounded-lg border border-border bg-card px-3 py-2">
-                      <p className="text-sm font-medium">
-                        {objective.kind === "task" && <span className="text-muted-foreground">Tarefa: </span>}
-                        {objective.title}
-                      </p>
-                      {objective.dueDate && (
-                        <p className="text-xs text-muted-foreground">Prazo: {objective.dueDate}</p>
-                      )}
-                      {objective.tasks.length > 0 && (
-                        <ul className="mt-1 space-y-0.5">
-                          {objective.tasks.map((task, j) => (
-                            <li key={j} className="text-xs text-muted-foreground pl-3 border-l border-border">
-                              {task.title}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                      <PlanNode draft={objective} level={0} standaloneTask={objective.kind === "task"} />
                     </div>
                   ))}
                 </div>

@@ -43,6 +43,8 @@ export async function generateJson<T>(input: {
   responseSchema?: GroqJsonSchema;
   model?: string;
   timeoutMs?: number;
+  /** Teto de tokens da resposta; sem ele vale o padrão do modelo. */
+  maxOutputTokens?: number;
 }): Promise<T> {
   const responseFormat = input.responseSchema
     ? { type: "json_schema", json_schema: { name: input.responseSchema.name, schema: input.responseSchema.schema, strict: true } }
@@ -59,6 +61,7 @@ export async function generateJson<T>(input: {
       messages: input.messages,
       temperature: 0,
       response_format: responseFormat,
+      ...(input.maxOutputTokens ? { max_completion_tokens: input.maxOutputTokens } : {}),
     }),
     signal: AbortSignal.timeout(input.timeoutMs ?? DEFAULT_TIMEOUT_MS),
   });

@@ -150,6 +150,23 @@ export async function create(input: {
   return data;
 }
 
+/** Insere vários itens de uma vez (em lotes, pra não estourar o limite de uma requisição). */
+export async function createMany(rows: Array<Record<string, unknown> & { id: string }>): Promise<ObjectiveRow[]> {
+  const supabase = getSupabase();
+  const created: ObjectiveRow[] = [];
+  const BATCH = 200;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const { data, error } = await supabase.from("objectives").insert(rows.slice(i, i + BATCH)).select();
+    if (error) {
+      // Lote que falhou no meio: desfaz o que já entrou pra não deixar árvore pela metade.
+      if (created.length > 0) await supabase.from("objectives").delete().in("id", created.map((r) => r.id));
+      throw new Error(error.message);
+    }
+    created.push(...(data ?? []));
+  }
+  return created;
+}
+
 /** Itens de topo (aparecem no board) — objetivos e tarefas avulsas, exclui só as tarefas aninhadas. */
 export async function findAllTopLevel(): Promise<ObjectiveRow[]> {
   const supabase = getSupabase();

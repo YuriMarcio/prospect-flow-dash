@@ -1,13 +1,17 @@
 import { generateJson, isGroqConfigured, transcribeAudio } from "../../lib/groq";
-import { listUsers, type AuthUser } from "../auth/auth.service";
-import { createObjectiveService } from "../objectives/objectives.service";
+import { listUsers } from "../auth/auth.service";
+import { createObjectiveTreesService } from "../objectives/objectives.service";
 import * as planningRepository from "./objective-planning.repository";
 import { buildPlannerMessages, parsePlannerResponse, PLANNER_JSON_SCHEMA } from "./objective-planning.prompts";
+import { toTreeNode } from "./objective-planning.tree";
 import type { PlannerObjectiveDraft, PlannerTurn, PlanningSessionRow } from "./objective-planning.types";
 
 // Turno de voz passa por dois passos (Whisper transcreve, Llama estrutura) —
 // timeout bem maior que o default de 8s do helper de classificação rápida.
-const PLANNER_TIMEOUT_MS = 30_000;
+// Colar uma lista grande (dezenas de itens) faz o modelo devolver o plano inteiro, o que leva mais tempo.
+const PLANNER_TIMEOUT_MS = 90_000;
+/** Teto de saída: o plano completo de uma lista grande passa fácil do padrão do modelo. */
+const PLANNER_MAX_OUTPUT_TOKENS = 32_000;
 
 export async function getOrCreateActiveSession(
   ownerUserId: string,
@@ -22,24 +26,6 @@ export async function getSessionOrThrow(id: string): Promise<PlanningSessionRow>
   const session = await planningRepository.findById(id);
   if (!session) throw new Error("Sessão de planejamento não encontrada.");
   return session;
-}
-
-function normalize(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .trim()
-    .toLowerCase();
-}
-
-/** Casa o nome falado pela IA contra a equipe cadastrada — sem match exato, mantém só o texto livre. */
-function resolveOwner(ownerName: string | null, users: AuthUser[]): { owner: string | null; assignedUserId: string | null } {
-  if (!ownerName?.trim()) return { owner: null, assignedUserId: null };
-  const target = normalize(ownerName);
-  const match = users.find(
-    (u) => (u.name && normalize(u.name) === target) || (u.username && normalize(u.username) === target),
-  );
-  return match ? { owner: match.name ?? match.username, assignedUserId: match.id } : { owner: ownerName, assignedUserId: null };
 }
 
 export async function appendTurn(
@@ -65,7 +51,12 @@ export async function appendTurn(
   const teamNames = (await listUsers()).map((u) => u.name || u.username).filter((n): n is string => Boolean(n));
   const messages = buildPlannerMessages(session.turns, session.draft, teamNames, userText);
 
-  const raw = await generateJson<unknown>({ messages, responseSchema: PLANNER_JSON_SCHEMA, timeoutMs: PLANNER_TIMEOUT_MS });
+  const raw = await generateJson<unknown>({
+    messages,
+    responseSchema: PLANNER_JSON_SCHEMA,
+    timeoutMs: PLANNER_TIMEOUT_MS,
+    maxOutputTokens: PLANNER_MAX_OUTPUT_TOKENS,
+  });
   const response = parsePlannerResponse(raw);
 
   const now = new Date().toISOString();
@@ -91,35 +82,10 @@ export async function confirmSession(
   if (!session.draft.length) throw new Error("Não há nenhum objetivo pra criar ainda.");
 
   const users = await listUsers();
-  const createdIds: string[] = [];
-
-  for (const objectiveDraft of session.draft) {
-    const { owner, assignedUserId } = resolveOwner(objectiveDraft.owner, users);
-    const objective = await createObjectiveService({
-      columnId,
-      title: objectiveDraft.title,
-      description: objectiveDraft.description,
-      dueDate: objectiveDraft.dueDate,
-      owner,
-      assignedUserId,
-      kind: objectiveDraft.kind,
-    });
-    createdIds.push(objective.id);
-
-    for (const taskDraft of objectiveDraft.tasks) {
-      const taskOwner = resolveOwner(taskDraft.owner, users);
-      const task = await createObjectiveService({
-        title: taskDraft.title,
-        description: taskDraft.description,
-        dueDate: taskDraft.dueDate,
-        owner: taskOwner.owner,
-        assignedUserId: taskOwner.assignedUserId,
-        kind: "task",
-        parentObjectiveId: objective.id,
-      });
-      createdIds.push(task.id);
-    }
-  }
+  const createdIds = await createObjectiveTreesService(
+    session.draft.map((draft) => toTreeNode(draft, users)),
+    columnId,
+  );
 
   const updated = await planningRepository.setStatus(session.id, "confirmed", createdIds);
   return { session: updated, createdObjectiveIds: createdIds };

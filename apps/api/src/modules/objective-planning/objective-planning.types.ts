@@ -1,18 +1,24 @@
+/**
+ * Um item do plano. Em `tasks` ficam os níveis abaixo dele: num objetivo são os marcos, num marco as
+ * issues, numa issue as subissues (no máximo 3 níveis abaixo do objetivo).
+ */
 export interface PlannerTaskDraft {
   title: string;
   description: string;
   dueDate: string | null;
   owner: string | null;
+  /** vendas | marketing | administrativo | desenvolvimento. Sem valor, herda a do item pai. */
+  area?: string | null;
+  /** critica | alta | media | baixa */
+  priority?: string | null;
+  /** Já concluído (progresso 100). */
+  done?: boolean;
+  tasks?: PlannerTaskDraft[];
 }
 
-export interface PlannerObjectiveDraft {
+export interface PlannerObjectiveDraft extends PlannerTaskDraft {
   /** "task" = tarefa avulsa, sem objetivo pai — vira um card de topo igual um objetivo. */
   kind: "objective" | "task";
-  title: string;
-  description: string;
-  dueDate: string | null;
-  owner: string | null;
-  tasks: PlannerTaskDraft[];
 }
 
 export interface PlannerTurn {

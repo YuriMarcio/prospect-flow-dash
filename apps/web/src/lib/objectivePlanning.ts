@@ -1,20 +1,30 @@
 import { request } from "@/lib/api";
+import type { ObjectiveArea, ObjectivePriority } from "@/lib/objectives";
 
+/**
+ * Item do plano proposto. Em `tasks` ficam os níveis abaixo dele: num objetivo são os marcos, num marco
+ * as issues, numa issue as subissues.
+ */
 export interface PlannerTaskDraft {
   title: string;
   description: string;
   dueDate: string | null;
   owner: string | null;
+  area?: ObjectiveArea | null;
+  priority?: ObjectivePriority | null;
+  /** Já concluído. */
+  done?: boolean;
+  tasks?: PlannerTaskDraft[];
 }
 
-export interface PlannerObjectiveDraft {
+export interface PlannerObjectiveDraft extends PlannerTaskDraft {
   /** "task" = tarefa avulsa, sem objetivo pai. */
   kind: "objective" | "task";
-  title: string;
-  description: string;
-  dueDate: string | null;
-  owner: string | null;
-  tasks: PlannerTaskDraft[];
+}
+
+/** Quantos itens o plano cria no total (objetivos e todos os níveis abaixo). */
+export function countPlanItems(drafts: PlannerTaskDraft[]): number {
+  return drafts.reduce((sum, draft) => sum + 1 + countPlanItems(draft.tasks ?? []), 0);
 }
 
 export interface PlannerTurn {

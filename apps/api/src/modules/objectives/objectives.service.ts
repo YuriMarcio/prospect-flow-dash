@@ -1,11 +1,14 @@
 import * as objectivesRepository from "./objectives.repository";
 import type { ObjectiveRow } from "./objectives.repository";
+import {
+  MAX_DEPTH,
+  OBJECTIVE_AREAS,
+  OBJECTIVE_PRIORITIES,
+  buildObjectiveTreeRows,
+  type ObjectiveTreeNode,
+} from "./objective-tree";
 
-export const OBJECTIVE_AREAS = ["vendas", "marketing", "administrativo", "desenvolvimento"] as const;
-export const OBJECTIVE_PRIORITIES = ["critica", "alta", "media", "baixa"] as const;
-
-/** Níveis abaixo do objetivo: marco (1) → issue (2) → subissue (3). */
-const MAX_DEPTH = 3;
+export { OBJECTIVE_AREAS, OBJECTIVE_PRIORITIES };
 
 export async function listColumnsService() {
   return objectivesRepository.listColumns();
@@ -128,6 +131,19 @@ export async function createObjectiveService(input: {
   });
   await syncAncestorsProgress(created.parent_objective_id);
   return created;
+}
+
+/**
+ * Cria várias árvores (objetivo → marcos → issues → subissues) de uma vez, na coluna dada.
+ * Uma leitura e uma gravação só — criar item por item refaria a consulta do quadro inteiro a cada um.
+ * Devolve os ids criados (topo e filhos).
+ */
+export async function createObjectiveTreesService(roots: ObjectiveTreeNode[], columnId: string): Promise<string[]> {
+  if (!columnId) throw new Error("Informe a coluna do item.");
+  const existing = await objectivesRepository.findAll();
+  const rows = buildObjectiveTreeRows(roots, { columnId, existing });
+  const created = await objectivesRepository.createMany(rows);
+  return created.map((row) => row.id);
 }
 
 /**
