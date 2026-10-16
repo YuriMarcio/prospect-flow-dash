@@ -15,7 +15,7 @@ import {
   Star,
 } from "lucide-react";
 import type { KanbanColumn, Lead } from "@/types";
-import { useLeadModalStore } from "@/store/leadModal";
+import { useLeadModal } from "@/hooks/use-lead-modal";
 import { LeadStageProgress } from "@/components/LeadStageProgress";
 import { cn } from "@/lib/utils";
 import {
@@ -105,7 +105,7 @@ function LeadCardCompact({
   columns: KanbanColumn[];
   onMove?: (columnId: string) => void;
 }) {
-  const open = useLeadModalStore((s) => s.open);
+  const { open } = useLeadModal();
 
   const needsMeeting = lead.status === "negociacao" && !lead.meetingAt;
   const meetingLabel = lead.meetingAt ? formatMeetingDate(lead.meetingAt) : null;
@@ -217,7 +217,7 @@ function LeadCardCompact({
 }
 
 function LeadCardDraggable({ lead, overlay = false, botDispatch }: LeadCardProps) {
-  const open = useLeadModalStore((s) => s.open);
+  const { open } = useLeadModal();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
     data: { lead },

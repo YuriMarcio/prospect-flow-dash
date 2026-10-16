@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarClock, CalendarX, Instagram, Mail, MessageCircle } from "lucide-react";
 import { listLeads } from "@/lib/api";
-import { useLeadModalStore } from "@/store/leadModal";
+import { useLeadModal } from "@/hooks/use-lead-modal";
 import type { Lead } from "@/types";
 
 const CHANNEL_ICON: Record<NonNullable<Lead["prospectingChannel"]>, React.ReactNode> = {
@@ -45,7 +45,7 @@ function toDateKey(iso: string) {
 }
 
 export function AgendaPage() {
-  const open = useLeadModalStore((s) => s.open);
+  const { open } = useLeadModal();
 
   const leadsQuery = useQuery({
     queryKey: ["leads"],

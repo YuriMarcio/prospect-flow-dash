@@ -1,4 +1,4 @@
-import { Outlet } from "@tanstack/react-router";
+import { Outlet, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { MobileSidebar } from "@/components/MobileSidebar";
@@ -6,10 +6,25 @@ import { Header } from "@/components/Header";
 import { PushBootstrap } from "@/components/PushBootstrap";
 import { useThemeStore } from "@/store/theme";
 import { usePwaInstallStore } from "@/store/pwaInstall";
+import { clearReturnPoint, takeReturnPoint } from "@/lib/returnPoint";
 
 export function AppLayout() {
   const apply = useThemeStore((s) => s.apply);
   useEffect(() => { apply(); }, [apply]);
+
+  // Voltou de um link externo (WhatsApp...) e o app reabriu no Dashboard: devolve o usuário à tela de onde saiu.
+  // Se a página sobreviveu (voltou a ficar visível), não há o que restaurar.
+  const router = useRouter();
+  useEffect(() => {
+    const target = takeReturnPoint();
+    if (target) router.history.replace(target);
+
+    function onVisible() {
+      if (document.visibilityState === "visible") clearReturnPoint();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [router]);
 
   const setDeferredPrompt = usePwaInstallStore((s) => s.setDeferredPrompt);
   useEffect(() => {

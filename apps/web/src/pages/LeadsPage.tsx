@@ -2,8 +2,8 @@ import { useState } from "react";
 import { ClientOnly } from "@tanstack/react-router";
 import { useKanbanStore } from "@/store/kanban";
 import { useFiltersStore } from "@/store/filters";
-import { useLeadModalStore } from "@/store/leadModal";
-import { StatusBadge } from "@/components/StatusBadge";
+import { useLeadModal } from "@/hooks/use-lead-modal";
+import { ContactBadge } from "@/components/ContactBadge";
 import { ChevronDown, Filter, MapPin, Star } from "lucide-react";
 import { useLeadsSync } from "@/hooks/use-leads-sync";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -22,7 +22,7 @@ export function LeadsPage() {
   const leadsQuery = useLeadsSync();
   const { search, city, category, status, minScore, setFilter, setMinScore, reset } =
     useFiltersStore();
-  const open = useLeadModalStore((s) => s.open);
+  const { open } = useLeadModal();
   const isMobile = useIsMobile();
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -197,7 +197,7 @@ function LeadCardList({ leads, onOpen }: { leads: Lead[]; onOpen: (id: string) =
               <span className="min-w-0 flex-1 text-[15px] font-semibold leading-snug">
                 {l.companyName}
               </span>
-              <StatusBadge status={l.status} className="shrink-0" />
+              <ContactBadge lead={l} className="shrink-0" />
             </div>
             <p className="flex items-center gap-1 text-xs text-muted-foreground">
               <span className="truncate">{l.category}</span>
@@ -233,7 +233,7 @@ function LeadTable({ leads, onOpen }: { leads: Lead[]; onOpen: (id: string) => v
               <th className="text-left px-4 py-3">Categoria</th>
               <th className="text-left px-4 py-3">Cidade</th>
               <th className="text-left px-4 py-3">Score</th>
-              <th className="text-left px-4 py-3">Status</th>
+              <th className="text-left px-4 py-3">Contato</th>
               <th className="text-left px-4 py-3">Responsável</th>
               <th className="text-left px-4 py-3">Última int.</th>
             </tr>
@@ -258,7 +258,7 @@ function LeadTable({ leads, onOpen }: { leads: Lead[]; onOpen: (id: string) => v
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <StatusBadge status={l.status} />
+                  <ContactBadge lead={l} />
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{l.owner}</td>
                 <td className="px-4 py-3 text-muted-foreground">{l.lastInteraction}</td>

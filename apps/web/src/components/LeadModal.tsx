@@ -1,19 +1,45 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useLeadModalStore } from "@/store/leadModal";
+import { useLeadModal, useOpenLeadId } from "@/hooks/use-lead-modal";
+import { useLeadContacted } from "@/hooks/use-lead-contacted";
+import { listCampaignLeads } from "@/lib/prospector";
+import { saveReturnPoint } from "@/lib/returnPoint";
 import { useKanbanStore } from "@/store/kanban";
 import { LeadFormDialog } from "@/components/prospector/campaign-panel/LeadFormDialog";
 import { StatusBadge } from "./StatusBadge";
+import { ContactBadge } from "./ContactBadge";
 import { ActivityTimeline } from "./ActivityTimeline";
-import { Building2, Instagram, Pencil, Phone, MapPin, Star, Calendar, User, Link as LinkIcon, Users, ShoppingBag, ExternalLink, FileText, MessageCircle } from "lucide-react";
+import { Building2, CheckCheck, Instagram, Pencil, Phone, MapPin, Star, Calendar, Undo2, User, Link as LinkIcon, Users, ShoppingBag, ExternalLink, FileText, MessageCircle } from "lucide-react";
 
 export function LeadModal() {
-  const { leadId, close } = useLeadModalStore();
+  const leadId = useOpenLeadId();
+  const { close } = useLeadModal();
   const lead = useKanbanStore((s) => s.leads.find((l) => l.id === leadId));
   const [editing, setEditing] = useState(false);
+  const { setContacted } = useLeadContacted();
+
+  // Situação no bot (só leads de campanha): é a mesma consulta do painel da campanha, então vem do cache
+  const campaignId = lead?.prospectingCampaignId ?? null;
+  const campaignLeads = useQuery({
+    queryKey: ["campaign-leads", campaignId],
+    queryFn: () => listCampaignLeads(campaignId!),
+    enabled: campaignId !== null,
+  });
+  const bot = campaignLeads.data?.find((item) => item.id === lead?.id)?.bot;
+  const botTalked = bot?.status === "sent" || bot?.status === "replied";
+
+  const whatsappHref = lead?.phone ? `https://wa.me/${lead.phone.replace(/\D/g, "")}` : null;
+
+  /** Tocou no WhatsApp: guarda de onde saiu (o celular pode fechar o app) e, se ainda não tinha falado, marca como contatado. */
+  function handleWhatsappClick() {
+    if (!lead) return;
+    saveReturnPoint();
+    if (lead.status === "novo") setContacted(lead, true);
+  }
 
   return (
     <>
@@ -37,12 +63,29 @@ export function LeadModal() {
                     {lead.category} • {lead.city}
                   </SheetDescription>
                 </div>
-                <StatusBadge status={lead.status} className="shrink-0" />
+                <ContactBadge lead={lead} bot={bot} className="shrink-0 py-1" />
               </div>
               {/* Celular: as ações rolam na horizontal numa linha só, em vez de quebrar em duas */}
               <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&>button]:h-10 [&>button]:shrink-0 sm:[&>button]:h-8">
-                <Button size="sm" onClick={() => setEditing(true)}><Pencil className="h-3.5 w-3.5" /> Editar</Button>
-                <Button size="sm" variant="secondary"><Phone className="h-3.5 w-3.5" /> Ligar</Button>
+                {whatsappHref && (
+                  <Button size="sm" asChild>
+                    <a href={whatsappHref} target="_blank" rel="noopener noreferrer" onClick={handleWhatsappClick}>
+                      <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                    </a>
+                  </Button>
+                )}
+                {lead.status === "novo" && (
+                  <Button size="sm" variant="secondary" onClick={() => setContacted(lead, true)}>
+                    <CheckCheck className="h-3.5 w-3.5" /> Já falei
+                  </Button>
+                )}
+                {lead.status === "contato" && !botTalked && (
+                  <Button size="sm" variant="secondary" onClick={() => setContacted(lead, false)}>
+                    <Undo2 className="h-3.5 w-3.5" /> Não falei
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Pencil className="h-3.5 w-3.5" /> Editar</Button>
+                <Button size="sm" variant="outline"><Phone className="h-3.5 w-3.5" /> Ligar</Button>
                 <Button size="sm" variant="outline">Adicionar nota</Button>
                 <Button size="sm" variant="outline">Próximo follow-up</Button>
               </div>
@@ -66,9 +109,10 @@ export function LeadModal() {
                   value={
                     lead.phone ? (
                       <a
-                        href={`https://wa.me/${lead.phone.replace(/\D/g, "")}`}
+                        href={whatsappHref ?? undefined}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={handleWhatsappClick}
                         className="text-primary hover:underline"
                       >
                         {lead.phone}
@@ -88,6 +132,7 @@ export function LeadModal() {
                         href={`https://instagram.com/${lead.instagram.replace(/^@/, "")}`}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={saveReturnPoint}
                         className="text-primary hover:underline"
                       >
                         @{lead.instagram.replace(/^@/, "")}
@@ -168,6 +213,7 @@ function LinkRow({ url }: { url: string }) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
+      onClick={saveReturnPoint}
       className="flex items-center gap-3 px-3 py-2.5 hover:bg-accent transition-colors group"
     >
       <Icon className={`h-4 w-4 shrink-0 ${color}`} />

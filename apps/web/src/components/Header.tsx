@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useThemeStore } from "@/store/theme";
 import { useFiltersStore } from "@/store/filters";
 import { useMobileSidebarStore } from "@/store/mobileSidebar";
-import { useLeadModalStore } from "@/store/leadModal";
+import { useLeadModal } from "@/hooks/use-lead-modal";
 import { useAuthStore } from "@/store/auth";
 import { logout } from "@/lib/api";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -28,7 +28,7 @@ export function Header() {
   const { theme, toggle } = useThemeStore();
   const { search, setSearch } = useFiltersStore();
   const { toggle: toggleMobileSidebar } = useMobileSidebarStore();
-  const openLead = useLeadModalStore((s) => s.open);
+  const { open: openLead } = useLeadModal();
   const { notifications, markRead, markAllRead, dismiss, snooze } = useNotificationsStore();
   const navigate = useNavigate();
   const isMobile = useIsMobile();

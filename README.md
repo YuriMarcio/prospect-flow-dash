@@ -72,7 +72,7 @@ Para guardar os candidatos que ficaram em dúvida (fila técnica) e os dados do 
 O sistema avisa das tarefas pelo app instalado (PWA): o que vence hoje e o que está atrasado (manhã), sprint terminando, o que vence amanhã (tarde) e o que falta para fechar o dia (fim do dia). Para ligar:
 
 1. Rode uma vez o arquivo `apps/api/migrations/2026-10-13-push-notifications.sql` no SQL Editor do Supabase.
-2. Gere um par de chaves com `npx web-push generate-vapid-keys` e acrescente no `apps/api/.env` (na VPS, no `.env.docker`) e reinicie a API:
+2. Gere um par de chaves com `npx web-push generate-vapid-keys` e acrescente no `apps/api/.env` (para rodar localmente). Em produção, cadastre as mesmas variáveis no **Coolify** (aplicação da API → Environment Variables) e faça **Redeploy**:
 
 ```
 VAPID_PUBLIC_KEY=cole_aqui_a_chave_publica
@@ -80,6 +80,8 @@ VAPID_PRIVATE_KEY=cole_aqui_a_chave_privada
 VAPID_SUBJECT=mailto:seu-email@exemplo.com    # opcional; sem ele usa o primeiro https de WEB_ORIGIN
 APP_TIMEZONE=America/Sao_Paulo                # opcional; fuso dos horários dos avisos
 ```
+
+   No Coolify, deixe a chave privada só em tempo de execução (desmarque "Build Variable"). Não escreva a chave privada em nenhum arquivo do repositório (ele é público).
 
 3. Em **Configurações → Alertas de tarefas**, ative neste aparelho (no app instalado o sistema também convida a ativar). No iPhone/iPad só funciona com o app instalado na Tela de Início.
 

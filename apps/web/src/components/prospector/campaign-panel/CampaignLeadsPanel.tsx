@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Download, MoreHorizontal, Pencil, Plus, Search, Send, Trash2, Users } from "lucide-react";
+import { CheckCheck, ChevronDown, Download, MoreHorizontal, Pencil, Plus, Search, Send, Trash2, Undo2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,11 +38,13 @@ import {
   type ProspectingCampaign,
 } from "@/lib/prospector";
 import { formatShortDate, toIsoDate } from "@/lib/objectiveMeta";
-import { useLeadModalStore } from "@/store/leadModal";
+import { useLeadModal } from "@/hooks/use-lead-modal";
+import { useLeadContacted } from "@/hooks/use-lead-contacted";
+import { ContactBadge } from "@/components/ContactBadge";
 import { cn } from "@/lib/utils";
 import { AddExistingLeadsDialog } from "./AddExistingLeadsDialog";
 import { LeadFormDialog } from "./LeadFormDialog";
-import { SOURCE_LABELS, dispatchBlockedReason, formatPhone, leadSituation } from "./leadDisplay";
+import { SOURCE_LABELS, dispatchBlockedReason, formatPhone, hasBeenContacted } from "./leadDisplay";
 
 type SituationFilter = "all" | "none" | "scheduled" | "sent" | "replied" | "failed";
 type CaptureSource = "instagram" | "ifood" | "instadelivery";
@@ -67,7 +69,8 @@ function matchesFilter(lead: CampaignLead, filter: SituationFilter): boolean {
     case "scheduled":
       return status === "queued" || status === "planned";
     case "sent":
-      return status === "sent";
+      // Inclui quem foi contatado à mão ou já avançou no funil, não só quem o bot atendeu
+      return hasBeenContacted(lead, lead.bot) && status !== "replied";
     case "replied":
       return status === "replied";
     case "failed":
@@ -98,7 +101,8 @@ export function CampaignLeadsPanel({
   status: CampaignStatus | undefined;
 }) {
   const queryClient = useQueryClient();
-  const openLead = useLeadModalStore((s) => s.open);
+  const { open: openLead } = useLeadModal();
+  const { setContacted } = useLeadContacted();
 
   const [filter, setFilter] = useState<SituationFilter>("all");
   const [search, setSearch] = useState("");
@@ -372,7 +376,6 @@ export function CampaignLeadsPanel({
 
             {visible.map((lead) => {
               const reason = blockedReason.get(lead.id) ?? null;
-              const situation = leadSituation(lead);
               return (
                 <div
                   key={lead.id}
@@ -400,7 +403,7 @@ export function CampaignLeadsPanel({
                     {/* Celular: o resto das colunas vira uma linha de chips embaixo do nome */}
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 md:hidden">
                       <span className="text-xs tabular-nums text-muted-foreground">{lead.phone ? formatPhone(lead.phone) : "Sem WhatsApp"}</span>
-                      <span className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-medium", situation.className)}>{situation.label}</span>
+                      <ContactBadge lead={lead} bot={lead.bot} />
                     </div>
                   </div>
 
@@ -413,9 +416,7 @@ export function CampaignLeadsPanel({
                     </span>
                   </span>
                   <span className="hidden md:block">
-                    <span className={cn("inline-block max-w-full truncate rounded-md px-2 py-0.5 text-[11px] font-medium", situation.className)}>
-                      {situation.label}
-                    </span>
+                    <ContactBadge lead={lead} bot={lead.bot} />
                   </span>
 
                   <span onClick={(e) => e.stopPropagation()}>
@@ -441,6 +442,18 @@ export function CampaignLeadsPanel({
                           <Send className="mr-2 h-3.5 w-3.5" />
                           {reason ? `Enviar agora (${reason.toLowerCase()})` : "Enviar agora"}
                         </DropdownMenuItem>
+                        {lead.status === "novo" && (
+                          <DropdownMenuItem onClick={() => setContacted(lead, true)}>
+                            <CheckCheck className="mr-2 h-3.5 w-3.5" />
+                            Marcar como contatado
+                          </DropdownMenuItem>
+                        )}
+                        {lead.status === "contato" && lead.bot.status !== "sent" && lead.bot.status !== "replied" && (
+                          <DropdownMenuItem onClick={() => setContacted(lead, false)}>
+                            <Undo2 className="mr-2 h-3.5 w-3.5" />
+                            Voltar para sem contato
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => setRemoveTarget(lead)} className="text-destructive focus:text-destructive">
                           <Trash2 className="mr-2 h-3.5 w-3.5" />

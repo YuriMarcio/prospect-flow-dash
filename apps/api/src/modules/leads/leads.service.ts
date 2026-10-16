@@ -1,5 +1,8 @@
 import * as leadsRepository from "./leads.repository";
 import * as campaignsRepository from "../prospecting-campaigns/prospecting-campaigns.repository";
+import * as queueRepository from "../prospector/queue.repository";
+import * as planRepository from "../prospector/plan.repository";
+import * as leadFlowStateRepository from "../prospector/lead-flow-state.repository";
 import { normalizeToE164 } from "../../lib/phone";
 import { toInstagramUrl } from "../../lib/instagram";
 import { createLeadSchema } from "./leads.schemas";
@@ -48,6 +51,18 @@ export async function updateLeadService(id: string, data: Record<string, unknown
   if ("whatsapp" in patch) patch.whatsapp = parseWhatsapp(patch.whatsapp as string | null);
   if ("instagram" in patch) patch.instagram = parseInstagram(patch.instagram as string | null);
   if ("name" in patch && !String(patch.name ?? "").trim()) throw new LeadError(400, "O nome do lead não pode ficar vazio.");
+
+  // Lead que sai de "A Prospectar" à mão (falei com ele pelo WhatsApp, arrastei no Kanban...) não pode
+  // receber a abertura do bot por cima: só "novo" entra na fila, então cancela o que ainda estava pendente.
+  if (typeof patch.status === "string" && patch.status !== "novo") {
+    const current = await leadsRepository.findById(id);
+    if (current?.status === "novo" && current.prospecting_campaign_id) {
+      const campaignId = current.prospecting_campaign_id as string;
+      await queueRepository.removeWaitingForLead(id, campaignId);
+      await planRepository.unassign(id);
+      await leadFlowStateRepository.stopForLead(id, campaignId);
+    }
+  }
 
   return await leadsRepository.update(id, patch);
 }
