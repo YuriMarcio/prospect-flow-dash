@@ -46,6 +46,16 @@ export function classifyBrazilPhone(raw: string): ClassifiedPhone | null {
 }
 
 /**
+ * Telefone achado em texto livre (bio do Instagram): só vale com DDD. A lib aceita número de 9
+ * dígitos como "local" (ex.: "99964-3585" vira +55999643585), mas isso não é WhatsApp de ninguém:
+ * sem DDD não dá para saber o número, então descarta em vez de gravar um telefone impossível.
+ */
+export function normalizeBioPhone(raw: string): string | null {
+  const classified = classifyBrazilPhone(raw);
+  return classified && classified.kind !== "other" ? classified.e164 : null;
+}
+
+/**
  * Dígitos do telefone sem o código do país (55): leads antigos foram gravados sem DDI e os
  * novos em E.164, e comparar pelo número nacional faz os dois se reconhecerem.
  */

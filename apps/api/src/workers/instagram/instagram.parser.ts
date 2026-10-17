@@ -1,4 +1,4 @@
-import { normalizeToE164 } from "../../lib/phone";
+import { normalizeBioPhone, normalizeToE164 } from "../../lib/phone";
 
 export interface ParsedBioData {
   whatsapp: string | null;
@@ -61,7 +61,7 @@ export function extractWhatsappFromBio(
     if (phoneMatch) {
       const digits = `${phoneMatch[2] ?? ""}${phoneMatch[3]}${phoneMatch[4]}`;
       // Número que não vira E.164 válido (ex.: "78974341", sem DDD) não é WhatsApp: descarta.
-      return normalizeToE164(digits);
+      return normalizeBioPhone(digits);
     }
   }
 
@@ -143,7 +143,7 @@ export function parseInstagramBio(bioText: string): ParsedBioData {
     if (phoneMatch) {
       // Junta o DDD e o número achado
       const digits = `${phoneMatch[2] || ""}${phoneMatch[3]}${phoneMatch[4]}`;
-      data.whatsapp = normalizeToE164(digits);
+      data.whatsapp = normalizeBioPhone(digits);
     }
   }
 
