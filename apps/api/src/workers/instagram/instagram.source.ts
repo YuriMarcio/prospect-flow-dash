@@ -43,7 +43,7 @@ export async function runInstagramSource(run: DiscoveryRun): Promise<void> {
   const { deps, budget } = ctx;
 
   const classifyCtx = { matchNiche: buildNicheMatcher(ctx.category), city: ctx.city, state: ctx.state };
-  const strategies = buildInstagramStrategies(ctx.category, ctx.city, ctx.state).map((strategy) => ({
+  const strategies = buildInstagramStrategies(ctx.category, ctx.city, ctx.state, ctx.neighborhood).map((strategy) => ({
     ...strategy,
     active: true,
   }));
@@ -314,7 +314,7 @@ async function validateByBio(run: DiscoveryRun, candidate: Candidate): Promise<v
     if (rejected) {
       run.providerBlocked = true;
       await run.log(
-        `ScrapeCreators recusou a consulta (HTTP ${rejected}): créditos esgotados ou chave inválida. Validação por bio interrompida.`,
+        `O provedor de perfis do Instagram recusou a consulta (HTTP ${rejected}): créditos esgotados ou chave inválida. Validação por bio interrompida.`,
         "error",
       );
     } else {

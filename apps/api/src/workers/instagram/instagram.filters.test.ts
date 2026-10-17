@@ -39,4 +39,16 @@ describe("buildInstagramStrategies", () => {
     const [category] = buildInstagramStrategies("Estética / Spa", "Santa Inês", "MA");
     assert.equal(category.query, 'site:instagram.com ("Estética" OR "Spa") "Santa Inês"');
   });
+
+  it("com bairro, bairro e cidade entram como termos separados em todas as estratégias", () => {
+    const strategies = buildInstagramStrategies("Hamburgueria", "Rio de Janeiro", "RJ", "Ilha do Governador");
+    assert.equal(strategies[0].query, 'site:instagram.com "Hamburgueria" "Ilha do Governador" "Rio de Janeiro"');
+    assert.equal(strategies.every((strategy) => strategy.query.includes('"Ilha do Governador" "Rio de Janeiro"')), true);
+  });
+
+  it("bairro vazio ou só espaços não muda a busca", () => {
+    const sem = buildInstagramStrategies("Hamburgueria", "Santa Inês", "MA");
+    assert.deepEqual(buildInstagramStrategies("Hamburgueria", "Santa Inês", "MA", "  "), sem);
+    assert.deepEqual(buildInstagramStrategies("Hamburgueria", "Santa Inês", "MA", null), sem);
+  });
 });

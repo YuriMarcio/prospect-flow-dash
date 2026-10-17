@@ -38,9 +38,11 @@ export async function runMapsSource(run: DiscoveryRun): Promise<void> {
 
   const matchNiche = buildNicheMatcher(ctx.category);
   const where = ctx.state ? `${ctx.city}, ${ctx.state}` : ctx.city;
+  // O bairro só refina a busca; quem valida o endereço continua sendo a cidade (ver matchAddress).
+  const area = ctx.neighborhood ? `${ctx.neighborhood}, ${where}` : where;
   const strategies = parseKeyword(ctx.category)
     .slice(0, MAX_ALTERNATIVES)
-    .map((alternative) => ({ query: `${alternative} em ${where}`, active: true }));
+    .map((alternative) => ({ query: `${alternative} em ${area}`, active: true }));
 
   const cap = ctx.sources.includes("instagram")
     ? Math.ceil(deps.limits.maxSearchRequests * SHARED_BUDGET_SHARE)
@@ -86,6 +88,9 @@ export async function runMapsSource(run: DiscoveryRun): Promise<void> {
 
       let fresh = 0;
       let discarded = 0;
+      let considered = 0;
+      let otherCity = 0;
+      let otherCitySample: string | undefined;
 
       for (const place of places) {
         if (run.goalReached) break;
@@ -93,10 +98,16 @@ export async function runMapsSource(run: DiscoveryRun): Promise<void> {
         const key = place.place_id ?? place.data_id ?? `${place.title}|${place.address ?? ""}`;
         if (seen.has(key)) continue;
         seen.add(key);
+        considered++;
 
         const niche = matchNiche([place.title, place.type ?? "", ...(place.types ?? [])]);
         const location = matchAddress(place.address, ctx.city, ctx.state);
         const decision = decide(niche, location);
+
+        if (location === "mismatch") {
+          otherCity++;
+          otherCitySample ??= place.address;
+        }
 
         if (decision === "rejected") {
           run.metrics.rejected++;
@@ -128,6 +139,14 @@ export async function runMapsSource(run: DiscoveryRun): Promise<void> {
 
       strategy.active = fresh > 0;
       await run.log(`[maps] página ${page + 1}: ${fresh} estabelecimento(s) novo(s) do nicho e da cidade, ${discarded} descartado(s).`);
+
+      // Página inteira com endereço de outra cidade: quase sempre é bairro/região digitado como cidade.
+      if (considered > 0 && otherCity === considered) {
+        await run.log(
+          `[maps] os ${considered} resultados têm endereço fora de "${ctx.city}" (ex.: "${otherCitySample}"). Se "${ctx.city}" é um bairro ou região, informe o município no campo Cidade e o bairro no campo Bairro.`,
+          "warn",
+        );
+      }
       await deps.delay(1000);
     }
   }

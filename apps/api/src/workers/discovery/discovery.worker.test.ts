@@ -403,6 +403,44 @@ describe("runDiscovery (Google Meu Negócio)", () => {
     assert.deepEqual(s.queued().map((row) => [row.place_id, row.reason]), [["b", "niche_unconfirmed"]]);
   });
 
+  it("com bairro, a busca do Maps inclui o bairro e a cidade continua validando o endereço", async () => {
+    const query = "Hamburgueria em Centro, Santa Inês, MA";
+    const s = setup({ mapsPages: { [query]: [[business()]] } });
+
+    await runDiscovery("c1", { ...MAPS_INPUT, neighborhood: "Centro" }, s.deps);
+
+    assert.ok(s.mapsSearches.length > 0);
+    assert.ok(s.mapsSearches.every((search) => search.query === query));
+    assert.equal(s.saved.length, 1);
+  });
+
+  it("região digitada como cidade: avisa que o endereço é de outra cidade em vez de descartar em silêncio", async () => {
+    const query = "Hamburgueria em ilha do governador, RJ";
+    const rio = "Estr. do Galeão, 100 - Portuguesa, Rio de Janeiro - RJ, 21931-000, Brasil";
+    const s = setup({
+      mapsPages: { [query]: [[business({ place_id: "a", address: rio }), business({ place_id: "b", title: "Outro Burger", address: rio })]] },
+    });
+
+    await runDiscovery("c1", { ...MAPS_INPUT, city: "ilha do governador", state: "RJ" }, s.deps);
+
+    assert.equal(s.saved.length, 0);
+    const warning = s.logs.find((line) => line.includes("Se \"ilha do governador\" é um bairro"));
+    assert.ok(warning, "deveria avisar para usar Cidade + Bairro");
+    assert.ok(warning.includes("Rio de Janeiro - RJ"));
+  });
+
+  it("não avisa quando só parte dos resultados é de outra cidade", async () => {
+    const s = setup({
+      mapsPages: {
+        [MAPS_QUERY]: [[business({ place_id: "a" }), business({ place_id: "b", address: "Av. X, 1 - Centro, São Luís - MA, 65000-000, Brasil" })]],
+      },
+    });
+
+    await runDiscovery("c1", MAPS_INPUT, s.deps);
+
+    assert.equal(s.logs.some((line) => line.includes("é um bairro ou região")), false);
+  });
+
   it("limite de lookups: o negócio entra sem Instagram e a campanha fica budget_exhausted", async () => {
     const s = setup({
       limits: { maxLookupRequests: 0 },

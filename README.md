@@ -51,9 +51,22 @@ SERP_API_KEY=cole_aqui_a_chave_da_serpapi
 
 Salve e rode o sistema normalmente.
 
+### Consulta de bio do Instagram (Apify)
+
+A bio do perfil (onde moram o WhatsApp e o link da bio) é consultada pelo **Apify**, que no plano grátis dá crédito mensal que renova. Crie o token em *Apify Console → Settings → API & Integrations* e acrescente no `apps/api/.env` (em produção, no Coolify, como variável só de execução):
+
+```
+APIFY_TOKEN=cole_aqui_o_token_do_apify
+PROFILE_PROVIDER=apify    # opcional; sem ele vale o que tiver chave, Apify primeiro
+```
+
+`SCRAPECREATORS_API_KEY` continua aceita (`PROFILE_PROVIDER=scrapecreators`), mas os créditos grátis dele não renovam. Em *Apify Console → Settings → Limits* defina um teto mensal de gasto para nunca passar do plano grátis.
+
+Para conferir com perfis reais, sem rodar uma captura (gasta 1 resultado por perfil): `npm run check:profiles -w api -- perfil1 perfil2`.
+
 ### Limites de gasto da Descoberta (opcional)
 
-Cada busca na SerpAPI e cada consulta de bio no ScrapeCreators gasta crédito. A Descoberta tem um limite por captura; se você não definir nada, valem os padrões abaixo. Para mudar, acrescente a linha no `apps/api/.env`:
+Cada busca na SerpAPI e cada consulta de bio no Apify gasta crédito. A Descoberta tem um limite por captura; se você não definir nada, valem os padrões abaixo. Para mudar, acrescente a linha no `apps/api/.env`:
 
 ```
 DISCOVERY_MAX_SEARCH_REQUESTS=15    # buscas na SerpAPI (Instagram + Google Meu Negócio)

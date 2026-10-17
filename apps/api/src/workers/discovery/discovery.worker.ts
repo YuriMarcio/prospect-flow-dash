@@ -42,13 +42,14 @@ export async function runDiscovery(
   if (segments.length === 0) throw new Error("[DISCOVERY] Nenhum segmento informado.");
 
   const state = normalizeUf(input.state);
+  const neighborhood = input.neighborhood?.trim() || null;
   const sources: DiscoverySource[] = input.sources?.length ? input.sources : ["instagram"];
   const multi = segments.length > 1;
 
   await deps.campaigns.updateStats(campaignId, { status: "running", processed: 0, found: 0 });
   await deps.log(
     campaignId,
-    `Iniciando descoberta: ${segments.map((segment) => `"${segment}"`).join(", ")} em "${input.city}${state ? `/${state}` : ""}" | meta: ${input.quantity} leads${multi ? " por segmento" : ""} | fontes: ${sources.join(", ")}`,
+    `Iniciando descoberta: ${segments.map((segment) => `"${segment}"`).join(", ")} em "${neighborhood ? `${neighborhood}, ` : ""}${input.city}${state ? `/${state}` : ""}" | meta: ${input.quantity} leads${multi ? " por segmento" : ""} | fontes: ${sources.join(", ")}`,
   );
 
   const outcomes: SegmentOutcome[] = [];
@@ -58,7 +59,7 @@ export async function runDiscovery(
     if (deps.isCancelled(campaignId)) break;
     if (multi) await deps.log(campaignId, `Segmento ${index + 1}/${segments.length}: "${category}"`);
 
-    const outcome = await runSegment(campaignId, category, input, state, sources, deps, foundTotal, multi);
+    const outcome = await runSegment(campaignId, category, input, state, neighborhood, sources, deps, foundTotal, multi);
     outcomes.push(outcome);
     foundTotal += outcome.run.found;
   }
@@ -93,6 +94,7 @@ async function runSegment(
   category: string,
   input: DiscoveryInput,
   state: string | null,
+  neighborhood: string | null,
   sources: DiscoverySource[],
   deps: DiscoveryDeps,
   foundBefore: number,
@@ -112,6 +114,7 @@ async function runSegment(
     category,
     city: input.city,
     state,
+    neighborhood,
     quantity: input.quantity,
     prospectingCampaignId: input.prospectingCampaignId,
     foundBefore,
@@ -146,7 +149,7 @@ function completionReason(outcomes: SegmentOutcome[]): CompletionReason {
 /** Consulta a bio dos leads salvos sem WhatsApp, com o que sobrou do orçamento dos segmentos. */
 async function enrichLeftovers(campaignId: string, outcomes: SegmentOutcome[], deps: DiscoveryDeps): Promise<void> {
   if (outcomes.some(({ run }) => run.providerBlocked)) {
-    await deps.log(campaignId, "Enriquecimento pulado: o ScrapeCreators recusou as consultas nesta captura.", "warn");
+    await deps.log(campaignId, "Enriquecimento pulado: o provedor de perfis do Instagram recusou as consultas nesta captura.", "warn");
     return;
   }
 

@@ -2,13 +2,14 @@ import * as leadsRepository from "../../modules/leads/leads.repository";
 import * as logsRepository from "../../modules/logs/logs.repository";
 import * as campaignsRepository from "../../modules/campaigns/campaigns.repository";
 import { cleanup, isCancelled } from "../../lib/cancellation";
-import { fetchInstagramProfile, runInstagramEnrichment } from "../instagram/instagram.enrichment.worker";
+import { runInstagramEnrichment } from "../instagram/instagram.enrichment.worker";
+import { fetchInstagramProfile } from "../instagram/instagram.provider";
 import { saveQueued } from "./candidates.repository";
 import { loadLimits } from "./discovery.config";
 import type { DiscoveryDeps } from "./run";
 import { createSerpClient } from "./serp.client";
 
-/** Dependências reais: SerpAPI, ScrapeCreators e o banco. Falha cedo se a chave da SerpAPI não existir. */
+/** Dependências reais: SerpAPI, o provedor de perfis (Apify ou ScrapeCreators) e o banco. Falha cedo se a chave da SerpAPI não existir. */
 export function createDefaultDeps(): DiscoveryDeps {
   const apiKey = process.env.SERP_API_KEY;
   if (!apiKey) throw new Error("[DISCOVERY] SERP_API_KEY não configurada no .env");

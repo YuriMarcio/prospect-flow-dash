@@ -48,6 +48,8 @@ export interface DiscoveryInput {
   categories?: string[];
   city: string;
   state?: string | null;
+  /** Bairro/região dentro da cidade: refina as buscas, mas a cidade continua sendo o que valida o endereço. */
+  neighborhood?: string | null;
   /** Meta de leads POR SEGMENTO. */
   quantity: number;
   sources: DiscoverySource[];
@@ -62,6 +64,8 @@ export interface RunContext {
   city: string;
   /** UF já normalizada (ex.: "MA") ou null. */
   state: string | null;
+  /** Bairro/região informado, já aparado, ou null. */
+  neighborhood: string | null;
   quantity: number;
   prospectingCampaignId?: string;
   /** Leads já somados pelos segmentos anteriores: o progresso da campanha é o total de todos. */
@@ -123,7 +127,7 @@ export class DiscoveryRun {
   limited = false;
   /** Buscas/consultas que falharam: a cobertura ficou incompleta, então não dá para dizer "fontes esgotadas". */
   errors = 0;
-  /** O ScrapeCreators recusou chave/créditos: nesta corrida não se consulta mais bio. */
+  /** O provedor de perfis recusou chave/créditos: nesta corrida não se consulta mais bio. */
   providerBlocked = false;
   readonly metrics: DiscoveryMetrics = { raw: 0, approved: 0, validated: 0, queued: 0, rejected: 0, duplicates: 0, created: 0, merged: 0 };
   readonly queued: QueuedCandidate[] = [];

@@ -1,5 +1,5 @@
 /**
- * Limites de gasto por campanha. Cada unidade é um crédito pago (SerpAPI ou ScrapeCreators).
+ * Limites de gasto por campanha. Cada unidade é um crédito pago (SerpAPI ou provedor de perfis).
  * Pontos de partida para medir (créditos por lead válido), não valores definitivos.
  */
 export interface DiscoveryLimits {
@@ -9,7 +9,7 @@ export interface DiscoveryLimits {
   maxPagesPerQuery: number;
   /** Buscas na SerpAPI para achar o Instagram de um negócio pelo nome. */
   maxLookupRequests: number;
-  /** Consultas de perfil no ScrapeCreators (validar pendentes e enriquecer). */
+  /** Consultas de perfil do Instagram (validar pendentes e enriquecer). */
   maxEnrichCalls: number;
   /** nfpr=1 nos dorks: pede à SerpAPI para não trocar a busca por uma correção automática. */
   useNfpr: boolean;

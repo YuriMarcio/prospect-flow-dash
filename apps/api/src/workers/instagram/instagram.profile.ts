@@ -4,7 +4,7 @@ import {
   extractWhatsappFromBio,
 } from "./instagram.parser";
 
-/** Perfil devolvido pelo ScrapeCreators (`/v1/instagram/profile`). */
+/** Perfil no formato do ScrapeCreators (`/v1/instagram/profile`); o Apify é convertido para ele em instagram.provider.ts. */
 export interface ScrapeCreatorsProfile {
   username?: string;
   full_name?: string;
@@ -33,7 +33,7 @@ export function profileToLeadFields(profile: ScrapeCreatorsProfile) {
 }
 
 /**
- * O ScrapeCreators recusou a consulta por chave inválida ou créditos esgotados (401/402/403).
+ * O provedor de perfis (Apify ou ScrapeCreators) recusou a consulta por chave inválida ou créditos esgotados (401/402/403).
  * Insistir lead por lead só repete o erro, então quem chama deve parar de consultar.
  */
 export function providerRejection(err: unknown): number | null {

@@ -60,6 +60,7 @@ function discoveryInput(
     categories: segments,
     city: data.city as string,
     state: typeof data.state === "string" ? data.state : null,
+    neighborhood: typeof data.neighborhood === "string" && data.neighborhood.trim() ? data.neighborhood.trim() : null,
     quantity: perSegment,
     sources: resolveSources(data.sources),
     prospectingCampaignId,

@@ -1,7 +1,7 @@
-import axios from "axios";
 import { getSupabase } from "../../lib/supabase";
 import { extractUsernameFromUrl } from "./instagram.parser";
-import { profileToLeadFields, providerRejection, type ScrapeCreatorsProfile } from "./instagram.profile";
+import { profileToLeadFields, providerRejection } from "./instagram.profile";
+import { fetchInstagramProfile } from "./instagram.provider";
 import * as logsRepository from "../../modules/logs/logs.repository";
 
 async function log(
@@ -32,32 +32,16 @@ interface LeadRow {
 
 const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
-export async function fetchInstagramProfile(handle: string): Promise<ScrapeCreatorsProfile | null> {
-  const apiKey = process.env.SCRAPECREATORS_API_KEY;
-  if (!apiKey) throw new Error("[ENRICHMENT] SCRAPECREATORS_API_KEY não configurada no .env");
-
-  const { data } = await axios.get<ScrapeCreatorsProfile>(
-    "https://api.scrapecreators.com/v1/instagram/profile",
-    {
-      params: { handle },
-      headers: { "x-api-key": apiKey },
-      timeout: 15_000,
-    },
-  );
-
-  return data ?? null;
-}
-
 // ---------------------------------------------------------------------------
 // WORKER PRINCIPAL
 // ---------------------------------------------------------------------------
 
 export interface EnrichmentOptions {
-  /** Teto de consultas ao ScrapeCreators nesta passada (orçamento da campanha). */
+  /** Teto de consultas de perfil nesta passada (orçamento da campanha). */
   maxCalls?: number;
 }
 
-/** Devolve quantas consultas ao ScrapeCreators foram feitas. */
+/** Devolve quantas consultas de perfil foram feitas. */
 export async function runInstagramEnrichment(
   campaignId: string,
   options: EnrichmentOptions = {},
@@ -127,7 +111,7 @@ export async function runInstagramEnrichment(
       if (rejected) {
         await log(
           campaignId,
-          `ScrapeCreators recusou a consulta (HTTP ${rejected}): créditos esgotados ou chave inválida. Enriquecimento interrompido.`,
+          `O provedor de perfis do Instagram recusou a consulta (HTTP ${rejected}): créditos esgotados ou chave inválida. Enriquecimento interrompido.`,
           "error",
         );
         break;

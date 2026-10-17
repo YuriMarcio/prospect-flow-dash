@@ -18,11 +18,13 @@ create index if not exists leads_google_place_id_idx
 
 -- Parâmetros e desfecho da captura.
 --   state             UF buscada (desambigua cidades homônimas, ex.: Santa Inês-MA × Santa Inês-BA)
+--   neighborhood      bairro/região opcional: refina as buscas; a cidade continua validando o endereço
 --   categories        segmentos escolhidos ({Hamburgueria,Pizzaria}); `category` guarda o resumo "Hamburgueria, Pizzaria"
 --   sources           fontes escolhidas: {instagram,maps}
 --   completion_reason goal_reached | sources_exhausted | budget_exhausted | source_errors
 alter table public.campaigns
   add column if not exists state text,
+  add column if not exists neighborhood text,
   add column if not exists categories text[],
   add column if not exists sources text[],
   add column if not exists completion_reason text;

@@ -97,11 +97,11 @@ function buildQueries(category: string, city: string, neighborhood: string | und
 
   const alternatives = categoryAlternatives(category);
   const phrases = alternatives.map((alt) => `"${alt}"`);
-  const location = [neighborhood, city].filter(Boolean).join(" ");
+  const area = neighborhood?.trim();
   const queries: Array<{ label: string; query: string; url: string }> = [];
 
   if (sources.includes("maps")) {
-    const query = `${alternatives[0]} em ${location}${state ? `, ${state}` : ""}`;
+    const query = `${alternatives[0]} em ${area ? `${area}, ` : ""}${city}${state ? `, ${state}` : ""}`;
     queries.push({
       label: "Google Meu Negócio",
       query,
@@ -111,7 +111,7 @@ function buildQueries(category: string, city: string, neighborhood: string | und
 
   if (sources.includes("instagram")) {
     const term = phrases.length > 1 ? `(${phrases.join(" OR ")})` : phrases[0];
-    const query = `site:instagram.com ${term} "${location}"`;
+    const query = `site:instagram.com ${term} ${area ? `"${area}" ` : ""}"${city}"`;
     queries.push({
       label: "Instagram",
       query,

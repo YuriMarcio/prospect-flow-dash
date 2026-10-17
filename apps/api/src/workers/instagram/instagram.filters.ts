@@ -96,10 +96,18 @@ function synonymsFor(alternatives: string[]): string[] {
  * Instagram. São hipóteses: o orquestrador mede quantos candidatos cada uma produz e só
  * aprofunda as que rendem.
  */
-export function buildInstagramStrategies(keyword: string, city: string, state?: string | null): DiscoveryStrategy[] {
+export function buildInstagramStrategies(
+  keyword: string,
+  city: string,
+  state?: string | null,
+  neighborhood?: string | null,
+): DiscoveryStrategy[] {
   const alternatives = parseKeyword(keyword);
   const synonyms = synonymsFor(alternatives);
-  const place = quote(city.replace(/"/g, "").trim());
+  const cleanCity = quote(city.replace(/"/g, "").trim());
+  const cleanNeighborhood = neighborhood?.replace(/"/g, "").trim();
+  // Bairro e cidade como termos separados: o Google exige os dois, sem exigir que fiquem juntos.
+  const place = cleanNeighborhood ? `${quote(cleanNeighborhood)} ${cleanCity}` : cleanCity;
   const uf = state?.trim().toUpperCase();
 
   const strategies: DiscoveryStrategy[] = [
