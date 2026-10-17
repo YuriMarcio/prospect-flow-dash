@@ -5,7 +5,7 @@ import type { ScrapeCreatorsProfile } from "../instagram/instagram.profile";
 import { runDiscovery } from "./discovery.worker";
 import type { QueuedCandidate } from "./candidates.repository";
 import type { CampaignStatsPatch, DiscoveryDeps, DiscoveryInput } from "./run";
-import type { MapsPlace, SerpOrganicResult } from "./serp.client";
+import { SerpLimitError, type MapsPlace, type SerpOrganicResult } from "./serp.client";
 
 const ig = (handle: string, title: string, snippet = ""): SerpOrganicResult => ({
   title,
@@ -39,12 +39,14 @@ interface Setup {
   profiles?: Record<string, ScrapeCreatorsProfile | null | Error>;
   /** Queries cuja busca no Google falha (ex.: timeout). */
   failQueries?: string[];
+  /** Queries (Google ou Maps) que a SerpAPI recusa por limite (HTTP 429). */
+  limitQueries?: string[];
   existing?: string[];
   limits?: Partial<DiscoveryDeps["limits"]>;
   cancelAfterSearches?: number;
 }
 
-function setup({ pages = {}, mapsPages = {}, profiles = {}, failQueries = [], existing = [], limits = {}, cancelAfterSearches }: Setup = {}) {
+function setup({ pages = {}, mapsPages = {}, profiles = {}, failQueries = [], limitQueries = [], existing = [], limits = {}, cancelAfterSearches }: Setup = {}) {
   const searches: Array<{ query: string; start: number }> = [];
   const mapsSearches: Array<{ query: string; start: number }> = [];
   const fetched: string[] = [];
@@ -62,10 +64,12 @@ function setup({ pages = {}, mapsPages = {}, profiles = {}, failQueries = [], ex
     serp: {
       async searchMaps({ query, start = 0 }) {
         mapsSearches.push({ query, start });
+        if (limitQueries.includes(query)) throw new SerpLimitError();
         return mapsPages[query]?.[start / 20] ?? [];
       },
       async searchGoogle({ query, start = 0 }) {
         searches.push({ query, start });
+        if (limitQueries.includes(query)) throw new SerpLimitError();
         if (failQueries.includes(query)) throw new Error("timeout of 30000ms exceeded");
         return pages[query]?.[start / 10] ?? [];
       },
@@ -76,7 +80,8 @@ function setup({ pages = {}, mapsPages = {}, profiles = {}, failQueries = [], ex
     limits: { maxSearchRequests: 15, maxPagesPerQuery: 3, maxLookupRequests: 20, maxEnrichCalls: 25, useNfpr: true, ...limits },
     leads: {
       async createUnique(data) {
-        const url = data.instagram as string;
+        // Negócio do Maps sem Instagram é identificado pelo place_id, senão todos colidiriam na mesma chave.
+        const url = (data.instagram ?? data.google_place_id ?? data.name) as string;
         const hit = store.get(url);
         if (hit) return { lead: hit, created: false };
         const lead = { id: `new-${store.size}`, name: data.name as string, prospecting_campaign_id: null };
@@ -667,6 +672,52 @@ describe("regressões do primeiro teste real (Barreirinhas)", () => {
       s.queued().map((row) => row.reason),
       ["profile_provider_blocked", "profile_provider_blocked", "profile_provider_blocked"],
     );
+    assert.equal(s.final()?.completion_reason, "source_errors");
+  });
+
+  it("limite da SerpAPI (429): para de buscar, pula os próximos segmentos e não diz que a meta foi atingida", async () => {
+    const input: DiscoveryInput = { ...INPUT, categories: ["Hamburgueria", "Pizzaria"], quantity: 1 };
+    const s = setup({
+      limitQueries: [STRATEGIES.category],
+      pages: { [STRATEGIES.category]: [[approved(1)]] },
+    });
+
+    await runDiscovery("c1", input, s.deps);
+
+    assert.equal(s.searches.length, 1, "só a primeira busca; nenhuma outra estratégia nem segmento");
+    assert.equal(s.searches.some((search) => search.query.includes("Pizzaria")), false);
+    assert.equal(s.final()?.completion_reason, "source_errors");
+    assert.ok(s.logs.some((line) => line.includes("limite") && line.includes("HTTP 429")), "avisa o limite");
+    assert.ok(s.logs.some((line) => line.includes("não buscados") && line.includes("Pizzaria")), "diz o que ficou de fora");
+  });
+
+  it("limite no Maps: não tenta o Instagram do mesmo segmento", async () => {
+    const s = setup({ limitQueries: [MAPS_QUERY] });
+
+    await runDiscovery("c1", { ...INPUT, sources: ["maps", "instagram"] }, s.deps);
+
+    assert.equal(s.mapsSearches.length, 1);
+    assert.equal(s.searches.length, 0);
+    assert.equal(s.final()?.completion_reason, "source_errors");
+  });
+
+  it("limite durante a busca do Instagram pelo nome: os negócios seguintes entram sem nova tentativa", async () => {
+    const s = setup({
+      limitQueries: ['site:instagram.com "Zelândia Burger" "Santa Inês"'],
+      mapsPages: {
+        [MAPS_QUERY]: [
+          [
+            business({ place_id: "a", phone: "(98) 3333-4444" }),
+            business({ place_id: "b", title: "Outro Burger", phone: "(98) 3333-5555" }),
+          ],
+        ],
+      },
+    });
+
+    await runDiscovery("c1", MAPS_INPUT, s.deps);
+
+    assert.equal(s.searches.length, 1, "o segundo negócio não gasta nova busca");
+    assert.equal(s.saved.length, 2, "os dois negócios continuam sendo salvos, só sem Instagram");
     assert.equal(s.final()?.completion_reason, "source_errors");
   });
 

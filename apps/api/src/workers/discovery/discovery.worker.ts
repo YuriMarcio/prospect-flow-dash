@@ -62,6 +62,19 @@ export async function runDiscovery(
     const outcome = await runSegment(campaignId, category, input, state, neighborhood, sources, deps, foundTotal, multi);
     outcomes.push(outcome);
     foundTotal += outcome.run.found;
+
+    // Limite da SerpAPI: os próximos segmentos só repetiriam o erro. Para aqui e diz o que ficou de fora.
+    if (outcome.run.serpBlocked) {
+      const skipped = segments.slice(index + 1);
+      if (skipped.length > 0) {
+        await deps.log(
+          campaignId,
+          `Segmentos não buscados por causa do limite da SerpAPI: ${skipped.map((segment) => `"${segment}"`).join(", ")}. Rode a captura de novo mais tarde (leads repetidos são ignorados).`,
+          "warn",
+        );
+      }
+      break;
+    }
   }
 
   const wasCancelled = deps.isCancelled(campaignId);
@@ -127,7 +140,7 @@ async function runSegment(
   try {
     // Maps primeiro: ele acha os estabelecimentos; o Instagram completa canais e acha o que faltou.
     if (sources.includes("maps")) await runMapsSource(run);
-    if (sources.includes("instagram")) await runInstagramSource(run);
+    if (sources.includes("instagram") && !run.serpBlocked) await runInstagramSource(run);
   } finally {
     await persistQueue(run);
   }
@@ -140,6 +153,8 @@ async function runSegment(
  * as fontes acabaram); senão, limite se algum parou por ele; senão, fontes esgotadas.
  */
 function completionReason(outcomes: SegmentOutcome[]): CompletionReason {
+  // Segmentos ficaram sem buscar: mesmo com a meta batida nos que rodaram, a cobertura é incompleta.
+  if (outcomes.some(({ run }) => run.serpBlocked)) return "source_errors";
   if (outcomes.every(({ run }) => run.goalReached)) return "goal_reached";
   if (outcomes.some(({ run }) => !run.goalReached && run.errors > 0)) return "source_errors";
   if (outcomes.some(({ run }) => !run.goalReached && run.limited)) return "budget_exhausted";

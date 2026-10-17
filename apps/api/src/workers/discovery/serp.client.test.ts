@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createSerpClient } from "./serp.client";
+import { createSerpClient, SerpLimitError } from "./serp.client";
 
 type Call = { url: string; params?: Record<string, unknown> };
 
@@ -36,6 +36,26 @@ describe("searchGoogle", () => {
 
     await assert.rejects(client.searchGoogle({ query: "q" }), /401/);
     assert.equal(calls.length, 1);
+  });
+
+  it("429 vira SerpLimitError e não é repetido", async () => {
+    const { http, calls } = fakeHttp([httpError(429)]);
+    const client = createSerpClient("key", http, 0);
+
+    await assert.rejects(client.searchGoogle({ query: "q" }), (err) => err instanceof SerpLimitError);
+    assert.equal(calls.length, 1);
+  });
+
+  it("429 também no Maps", async () => {
+    const { http } = fakeHttp([httpError(429)]);
+    await assert.rejects(createSerpClient("key", http, 0).searchMaps({ query: "q" }), (err) => err instanceof SerpLimitError);
+  });
+
+  it("429 na segunda tentativa (depois de timeout) também vira SerpLimitError", async () => {
+    const { http, calls } = fakeHttp([timeout, httpError(429)]);
+
+    await assert.rejects(createSerpClient("key", http, 0).searchGoogle({ query: "q" }), (err) => err instanceof SerpLimitError);
+    assert.equal(calls.length, 2);
   });
 
   it("repete 5xx uma vez e, se falhar de novo, propaga", async () => {

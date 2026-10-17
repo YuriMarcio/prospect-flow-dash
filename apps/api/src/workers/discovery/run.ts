@@ -5,7 +5,7 @@ import type { QueuedCandidate, SaveQueuedResult } from "./candidates.repository"
 import { nationalDigits } from "../../lib/phone";
 import { handleAsName, sameBusiness } from "./business-name";
 import type { DiscoveryLimits } from "./discovery.config";
-import type { SerpClient } from "./serp.client";
+import { SerpLimitError, type SerpClient } from "./serp.client";
 
 export type LogLevel = "info" | "warn" | "error";
 export type DiscoverySource = "instagram" | "maps";
@@ -129,6 +129,8 @@ export class DiscoveryRun {
   errors = 0;
   /** O provedor de perfis recusou chave/créditos: nesta corrida não se consulta mais bio. */
   providerBlocked = false;
+  /** A SerpAPI recusou por limite (429): não há mais buscas nesta corrida nem nos segmentos seguintes. */
+  serpBlocked = false;
   readonly metrics: DiscoveryMetrics = { raw: 0, approved: 0, validated: 0, queued: 0, rejected: 0, duplicates: 0, created: 0, merged: 0 };
   readonly queued: QueuedCandidate[] = [];
 
@@ -144,6 +146,20 @@ export class DiscoveryRun {
 
   log(message: string, level: LogLevel = "info"): Promise<void> {
     return this.ctx.deps.log(this.ctx.campaignId, `${this.ctx.logPrefix}${message}`, level);
+  }
+
+  /**
+   * Se o erro foi o limite da SerpAPI, trava as buscas e avisa uma única vez; devolve true nesse caso
+   * (quem chamou deve parar de buscar). Qualquer outro erro devolve false e segue o tratamento normal.
+   */
+  async noteSerpLimit(err: unknown): Promise<boolean> {
+    if (!(err instanceof SerpLimitError)) return false;
+    if (!this.serpBlocked) {
+      this.serpBlocked = true;
+      this.errors++;
+      await this.log(`${err.message}. As buscas foram interrompidas.`, "error");
+    }
+    return true;
   }
 
   private readonly registered: RegisteredLead[] = [];

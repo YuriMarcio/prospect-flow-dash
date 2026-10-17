@@ -58,7 +58,7 @@ export async function runMapsSource(run: DiscoveryRun): Promise<void> {
     if (active.length === 0) break;
 
     for (const strategy of active) {
-      if (run.goalReached || run.cancelled) break search;
+      if (run.goalReached || run.cancelled || run.serpBlocked) break search;
 
       if (used >= cap || !budget.spend("search")) {
         run.limited = true;
@@ -75,6 +75,7 @@ export async function runMapsSource(run: DiscoveryRun): Promise<void> {
       } catch (err) {
         strategy.active = false;
         run.errors++;
+        if (await run.noteSerpLimit(err)) break search;
         await run.log(`[maps] busca falhou: ${err instanceof Error ? err.message : String(err)}`, "error");
         continue;
       }
@@ -245,6 +246,9 @@ async function lookupInstagram(
 ): Promise<InstagramMatch | null> {
   const { deps, budget, city, state } = run.ctx;
 
+  // SerpAPI no limite: o negócio entra só com o que o Maps já trouxe, sem gastar mais tentativas.
+  if (run.serpBlocked) return null;
+
   if (!budget.spend("lookup")) {
     run.limited = true;
     if (!lookupLog.lookupBudgetLogged()) {
@@ -264,6 +268,7 @@ async function lookupInstagram(
       nfpr: deps.limits.useNfpr,
     });
   } catch (err) {
+    if (await run.noteSerpLimit(err)) return null;
     await run.log(`${place.title}: busca do Instagram falhou: ${err instanceof Error ? err.message : String(err)}`, "warn");
     return null;
   }

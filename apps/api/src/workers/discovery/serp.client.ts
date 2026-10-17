@@ -61,6 +61,20 @@ const axiosGet: HttpGet = (url, config) => axios.get(url, config);
 
 const RETRY_DELAY_MS = 1500;
 
+/**
+ * A SerpAPI recusou por excesso de pedidos ou buscas esgotadas (HTTP 429). Insistir só repete o
+ * erro (e gasta tempo), então quem chama deve parar de buscar nesta captura.
+ */
+export class SerpLimitError extends Error {
+  constructor() {
+    super("SerpAPI recusou por limite (HTTP 429): limite de buscas por hora ou do mês atingido");
+    this.name = "SerpLimitError";
+  }
+}
+
+const isRateLimit = (err: unknown) => (err as { response?: { status?: number } })?.response?.status === 429;
+const asFailure = (err: unknown) => (isRateLimit(err) ? new SerpLimitError() : err);
+
 /** Timeout, queda de rede ou 5xx: vale uma segunda tentativa. 4xx (chave, plano, parâmetro) não. */
 function isTransient(err: unknown): boolean {
   const failure = err as { code?: string; message?: string; response?: { status?: number } };
@@ -80,9 +94,13 @@ export function createSerpClient(
     try {
       return await rawHttp(url, config);
     } catch (err) {
-      if (!isTransient(err)) throw err;
+      if (!isTransient(err)) throw asFailure(err);
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
-      return rawHttp(url, config);
+      try {
+        return await rawHttp(url, config);
+      } catch (retryErr) {
+        throw asFailure(retryErr);
+      }
     }
   };
 
