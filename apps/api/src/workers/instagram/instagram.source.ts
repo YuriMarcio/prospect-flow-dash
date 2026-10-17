@@ -1,5 +1,5 @@
 import { classifyInstagramResult, type Decision } from "../discovery/classification";
-import { matchLocation, type LocationEvidence } from "../discovery/location";
+import { matchArea, type LocationEvidence } from "../discovery/location";
 import type { DiscoveryRun } from "../discovery/run";
 import {
   buildInstagramStrategies,
@@ -42,7 +42,12 @@ export async function runInstagramSource(run: DiscoveryRun): Promise<void> {
   const { ctx } = run;
   const { deps, budget } = ctx;
 
-  const classifyCtx = { matchNiche: buildNicheMatcher(ctx.category), city: ctx.city, state: ctx.state };
+  const classifyCtx = {
+    matchNiche: buildNicheMatcher(ctx.category),
+    city: ctx.city,
+    state: ctx.state,
+    neighborhood: ctx.neighborhood,
+  };
   const strategies = buildInstagramStrategies(ctx.category, ctx.city, ctx.state, ctx.neighborhood).map((strategy) => ({
     ...strategy,
     active: true,
@@ -303,7 +308,7 @@ async function validatePending(run: DiscoveryRun, candidates: Map<string, Candid
 }
 
 async function validateByBio(run: DiscoveryRun, candidate: Candidate): Promise<void> {
-  const { deps, city, state } = run.ctx;
+  const { deps, city, state, neighborhood } = run.ctx;
 
   let profile;
   try {
@@ -329,7 +334,7 @@ async function validateByBio(run: DiscoveryRun, candidate: Candidate): Promise<v
     return;
   }
 
-  const location = matchLocation([profile.full_name ?? "", profile.biography ?? "", snippetOf(candidate)], city, state);
+  const location = matchArea([profile.full_name ?? "", profile.biography ?? "", snippetOf(candidate)], city, state, neighborhood);
 
   if (location === "mismatch") {
     candidate.status = "rejected";

@@ -85,6 +85,22 @@ export function matchLocation(texts: string[], city: string, state?: string | nu
 }
 
 /**
+ * Como matchLocation, mas com bairro/região: perfil do Instagram costuma citar só o bairro
+ * ("Ilha do Governador"), não o município. O bairro só confirma quando a cidade não disse nada;
+ * se a cidade ou a UF contradizem o texto, continua sendo mismatch.
+ */
+export function matchArea(
+  texts: string[],
+  city: string,
+  state?: string | null,
+  neighborhood?: string | null,
+): LocationEvidence {
+  const byCity = matchLocation(texts, city, state);
+  if (byCity !== "unknown" || !neighborhood?.trim()) return byCity;
+  return matchLocation(texts, neighborhood, state) === "confirmed" ? "confirmed" : "unknown";
+}
+
+/**
  * Endereço do Google Maps, formato pt-BR: "R. Tal, 123 - Centro, Santa Inês - MA, 65300-000, Brasil".
  * Compara cidade e UF do segmento "Cidade - UF". Sem esse segmento, cai no texto livre.
  */

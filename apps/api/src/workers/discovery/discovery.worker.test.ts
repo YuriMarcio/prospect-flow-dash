@@ -217,6 +217,19 @@ describe("runDiscovery (Instagram)", () => {
     assert.equal(s.final()?.found, 1);
   });
 
+  it("com bairro, perfil que cita só o bairro é salvo sem gastar consulta de bio", async () => {
+    const input: DiscoveryInput = { ...INPUT, city: "Rio de Janeiro", state: "RJ", neighborhood: "Ilha do Governador" };
+    const [category] = buildInstagramStrategies(input.category, input.city, input.state, input.neighborhood);
+    const s = setup({
+      pages: { [category.query]: [[ig("bravehero", "Brave Hero Hamburgueria", "Hamburgueria temática 📍Ilha do Governador")]] },
+    });
+
+    await runDiscovery("c1", input, s.deps);
+
+    assert.equal(s.saved.length, 1);
+    assert.deepEqual(s.fetched, [], "o bairro já confirmou: nenhuma consulta de bio");
+  });
+
   it("snippet de outra estratégia confirma a cidade e dispensa a consulta de bio", async () => {
     const withCity = ig("pend1burguer", "Pend 1 Burger", "hambúrguer artesanal em Santa Inês - MA");
     const s = setup({

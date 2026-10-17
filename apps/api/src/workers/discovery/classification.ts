@@ -1,5 +1,5 @@
 import { parseProfileLink, type NicheEvidence, type ProfileLink } from "../instagram/instagram.filters";
-import { matchLocation, type LocationEvidence } from "./location";
+import { matchArea, type LocationEvidence } from "./location";
 
 /**
  * approved = nicho e cidade confirmados: salva direto.
@@ -25,6 +25,7 @@ export interface ClassificationContext {
   matchNiche: (texts: string[]) => NicheEvidence;
   city: string;
   state?: string | null;
+  neighborhood?: string | null;
 }
 
 export interface Classified {
@@ -40,7 +41,7 @@ export function classifyInstagramResult(result: InstagramSearchResult, ctx: Clas
 
   const snippet = result.snippet ?? "";
   const niche = ctx.matchNiche([result.title, snippet, profile.handle]);
-  const location = matchLocation([result.title, snippet], ctx.city, ctx.state);
+  const location = matchArea([result.title, snippet], ctx.city, ctx.state, ctx.neighborhood);
 
   return { decision: decide(niche, location), niche, location, profile };
 }

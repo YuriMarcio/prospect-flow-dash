@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { buildNicheMatcher, parseProfileLink } from "../instagram/instagram.filters";
 import { classifyInstagramResult, decide } from "./classification";
-import { matchAddress, matchLocation, normalizeUf } from "./location";
+import { matchAddress, matchArea, matchLocation, normalizeUf } from "./location";
 import { SANTA_INES_RESULTS } from "./fixtures/santa-ines-hamburgueria";
 
 const matchNiche = buildNicheMatcher("Hamburgueria");
@@ -103,6 +103,47 @@ describe("matchLocation", () => {
 
   it("DDD no texto não confirma cidade", () => {
     assert.equal(matchLocation(["Pedidos: (98) 98888-7777"], "Santa Inês", "MA"), "unknown");
+  });
+});
+
+describe("matchArea (cidade + bairro)", () => {
+  const city = "Rio de Janeiro";
+  const bairro = "Ilha do Governador";
+
+  it("perfil que cita só o bairro é confirmado quando a cidade não aparece", () => {
+    const texts = ["Lanches 📍Ilha do Governador ⏰ Terça a domingo"];
+    assert.equal(matchLocation(texts, city, "RJ"), "unknown");
+    assert.equal(matchArea(texts, city, "RJ", bairro), "confirmed");
+  });
+
+  it("sem bairro (ou bairro vazio) é exatamente o matchLocation", () => {
+    const texts = ["Lanches 📍Ilha do Governador"];
+    assert.equal(matchArea(texts, city, "RJ"), "unknown");
+    assert.equal(matchArea(texts, city, "RJ", "  "), "unknown");
+  });
+
+  it("o bairro não anula evidência contrária da cidade ou da UF", () => {
+    assert.equal(matchArea(["Ilha do Governador, São Paulo - SP"], city, "RJ", bairro), "mismatch");
+  });
+
+  it("a cidade citada continua confirmando sem precisar do bairro", () => {
+    assert.equal(matchArea(["Hamburgueria • Rio de Janeiro - RJ"], city, "RJ", bairro), "confirmed");
+  });
+
+  it("nem cidade nem bairro: unknown", () => {
+    assert.equal(matchArea(["Os melhores burgers"], city, "RJ", bairro), "unknown");
+  });
+
+  it("classificação do Instagram: com o bairro no snippet o candidato é aprovado, sem ele fica pendente", () => {
+    const result = {
+      title: "Brave Hero Hamburgueria",
+      link: "https://www.instagram.com/bravehero/",
+      snippet: "Hamburgueria temática 📍Ilha do Governador",
+    };
+    const base = { matchNiche, city, state: "RJ" };
+
+    assert.equal(classifyInstagramResult(result, base).decision, "pending");
+    assert.equal(classifyInstagramResult(result, { ...base, neighborhood: bairro }).decision, "approved");
   });
 });
 
